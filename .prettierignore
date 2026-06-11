@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+.env
+.idea/
+.vscode/
+*.tsbuildinfo
+.npm
+lerna-debug.log
