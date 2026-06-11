@@ -54,7 +54,7 @@ export abstract class UsbMuxConnection {
   /**
    * Create socket connection to usbmuxd daemon
    */
-  private static async createUsbmuxSocket(usbmuxAddress?: string): Promise<net.Socket> {
+  public static async createUsbmuxSocket(usbmuxAddress?: string): Promise<net.Socket> {
     const address = UsbMuxConnection.resolveUsbmuxAddress(usbmuxAddress);
 
     const socket = new net.Socket();
@@ -69,7 +69,7 @@ export abstract class UsbMuxConnection {
       } else if (address.host && address.port) {
         // TCP connection
         await new Promise<void>((resolve, reject) => {
-          socket.connect(address.port, address.host!, () => resolve());
+          socket.connect(address.port!, address.host!, () => resolve());
           socket.once('error', reject);
         });
       } else {

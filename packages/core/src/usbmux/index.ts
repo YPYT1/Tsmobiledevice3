@@ -10,11 +10,11 @@ export * from './PlistMuxConnection';
 /**
  * Convenience function: List all connected devices
  */
-import { UsbMuxConnection } from './UsbMuxConnection';
+import { PlistMuxConnection } from './PlistMuxConnection';
 import { UsbMuxDevice } from './types';
 
 export async function listDevices(usbmuxAddress?: string): Promise<UsbMuxDevice[]> {
-  const mux = await UsbMuxConnection.create(usbmuxAddress);
+  const mux = new PlistMuxConnection(await (await import('./UsbMuxConnection')).UsbMuxConnection.createUsbmuxSocket(usbmuxAddress));
   try {
     const devices = await mux.listDevices();
     return devices;

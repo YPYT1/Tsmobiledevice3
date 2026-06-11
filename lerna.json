@@ -1,20 +1,7 @@
 {
   "version": "0.0.1",
   "npmClient": "npm",
-  "useWorkspaces": true,
   "packages": [
     "packages/*"
-  ],
-  "command": {
-    "publish": {
-      "ignoreChanges": [
-        "*.md",
-        "*.test.ts",
-        "__tests__/**"
-      ]
-    },
-    "bootstrap": {
-      "ignore": "components-*"
-    }
-  }
+  ]
 }

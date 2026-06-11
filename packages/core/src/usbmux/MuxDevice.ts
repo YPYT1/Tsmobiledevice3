@@ -2,14 +2,12 @@
  * UsbMux device entity
  */
 
-import { ConnectionType } from './types';
-
 export class MuxDevice {
   public readonly devid: number;
   public readonly serial: string;
-  public readonly connectionType: ConnectionType;
+  public readonly connectionType: 'USB' | 'Network';
 
-  constructor(devid: number, serial: string, connectionType: ConnectionType) {
+  constructor(devid: number, serial: string, connectionType: 'USB' | 'Network') {
     this.devid = devid;
     this.serial = serial;
     this.connectionType = connectionType;

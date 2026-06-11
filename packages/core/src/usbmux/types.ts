@@ -40,11 +40,8 @@ export interface UsbMuxHeader {
 export interface UsbMuxDevice {
   devid: number;
   serial: string;
-  connectionType: ConnectionType;
+  connectionType: 'USB' | 'Network';
 }
-
-// Connection type
-export type ConnectionType = 'USB' | 'Network';
 
 // usbmuxd connect request data
 export interface ConnectRequestData {
