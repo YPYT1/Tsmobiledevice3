@@ -1,129 +1,84 @@
-/**
- * 正确的连接测试 - 确保连接正确关闭
- */
-
 const net = require('net');
 
-async function cleanTest() {
-  console.log('=== Clean Connection Test ===\n');
-
-  // 创建连接
-  const socket = new net.Socket();
-
-  // 设置超时和错误处理
-  socket.setTimeout(3000);
-
-  try {
-    console.log('1. Connecting...');
-    await new Promise((resolve, reject) => {
-      socket.connect(27015, '127.0.0.1', () => {
-        console.log('   Connected!\n');
-        resolve();
-      });
-      socket.once('error', (err) => {
-        reject(new Error(`Connection failed: ${err.message}`));
-      });
-      socket.once('timeout', () => {
-        socket.destroy();
-        reject(new Error('Connection timeout'));
-      });
-    });
-
-    // 收集响应
-    let responseData = Buffer.alloc(0);
-    const dataPromise = new Promise((resolve) => {
-      socket.once('data', (chunk) => {
-        responseData = Buffer.concat([responseData, chunk]);
-        resolve();
-      });
-    });
-
-    // 发送请求
-    console.log('2. Sending request...');
-    const plistXml = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-\t<key>ClientVersionString</key>
-\t<string>qt4i-usbmuxd</string>
-\t<key>MessageType</key>
-\t<string>ListDevices</string>
-\t<key>ProgName</key>
-\t<string>pymobiledevice3</string>
-\t<key>kLibUSBMuxVersion</key>
-\t<integer>3</integer>
-</dict>
-</plist>`;
-
-    const header = Buffer.alloc(12);
-    header.writeUInt32LE(1, 0);
-    header.writeUInt32LE(8, 4);
-    header.writeUInt32LE(1, 8);
-
-    const payload = Buffer.from(plistXml, 'utf8');
-    const packet = Buffer.concat([header, payload]);
-
-    const lengthPrefix = Buffer.alloc(4);
-    lengthPrefix.writeUInt32LE(packet.length, 0);
-
-    const fullPacket = Buffer.concat([lengthPrefix, packet]);
-
-    socket.write(fullPacket);
-    console.log('   Sent!\n');
-
-    // 等待响应
-    console.log('3. Waiting for response...');
-    await Promise.race([
-      dataPromise,
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Response timeout')), 2000)
-      )
-    ]);
-
-    if (responseData.length > 0) {
-      console.log(`   Received ${responseData.length} bytes\n`);
-
-      // 解析
-      const packetLength = responseData.readUInt32LE(0);
-      const plistData = responseData.slice(16, 4 + packetLength);
-
-      // 简单解析
-      const plistString = plistData.toString('utf8');
-      const numberMatch = plistString.match(/<key>Number<\/key>\s*<integer>(\d+)<\/integer>/);
-
-      if (numberMatch) {
-        const errorCode = parseInt(numberMatch[1], 10);
-        console.log('4. Response parsed:');
-        console.log(`   Error code: ${errorCode}\n`);
-
-        if (errorCode === 0) {
-          console.log('=== SUCCESS! Error code is 0 ===\n');
-        } else {
-          console.log(`=== FAILED! Error code: ${errorCode} ===\n`);
-
-          // 分析原因
-          console.log('Possible causes:');
-          if (errorCode === 5) {
-            console.log('  1. Too many connections to AMDS (need to clean up)');
-            console.log('  2. Device not properly trusted');
-            console.log('  3. AMDS internal state corrupted');
-          }
-        }
-      }
-    } else {
-      console.log('   No response received\n');
-    }
-
-  } catch (error) {
-    console.error('ERROR:', error.message, '\n');
-  } finally {
-    // 关闭连接
-    console.log('5. Cleaning up...');
-    socket.destroy();
-    console.log('   Socket destroyed\n');
-  }
-
-  console.log('=== Test Complete ===\n');
+function makePacket(msgDict, tag = 1) {
+  const entries = Object.entries(msgDict).map(([k, v]) => {
+    if (typeof v === 'number') return `\t<key>${k}</key>\n\t<integer>${v}</integer>`;
+    return `\t<key>${k}</key>\n\t<string>${v}</string>`;
+  }).join('\n');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n${entries}\n</dict>\n</plist>\n`;
+  const payload = Buffer.from(xml, 'utf8');
+  const header = Buffer.alloc(12);
+  header.writeUInt32LE(1, 0); // version PLIST
+  header.writeUInt32LE(8, 4); // message PLIST
+  header.writeUInt32LE(tag, 8);
+  const packet = Buffer.concat([header, payload]);
+  const len = Buffer.alloc(4);
+  // FIXED: length includes itself (4 bytes) - matches Python's includelength=True
+  len.writeUInt32LE(packet.length + 4, 0);
+  return Buffer.concat([len, packet]);
 }
 
-cleanTest().catch(console.error);
+function recvFull(sock) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const onData = (d) => {
+      chunks.push(d);
+      const all = Buffer.concat(chunks);
+      if (all.length >= 4) {
+        const totalLen = all.readUInt32LE(0); // self-inclusive length
+        if (all.length >= totalLen) {
+          sock.removeListener('data', onData);
+          resolve(all.slice(0, totalLen));
+        }
+      }
+    };
+    sock.on('data', onData);
+    sock.once('error', reject);
+    setTimeout(() => reject(new Error('timeout')), 3000);
+  });
+}
+
+function connect() {
+  return new Promise((resolve, reject) => {
+    const sock = new net.Socket();
+    sock.connect(27015, '127.0.0.1', () => resolve(sock));
+    sock.once('error', reject);
+  });
+}
+
+async function main() {
+  // Step 1: probe ReadBUID
+  console.log('Step 1: ReadBUID probe...');
+  const sock1 = await connect();
+  const resp1 = await recvFull(sock1, makePacket({ MessageType: 'ReadBUID' }));
+  // send after registering listener
+  const probePacket = makePacket({ MessageType: 'ReadBUID' });
+  sock1.write(probePacket);
+  const probeResp = await recvFull(sock1);
+  const buid = probeResp.slice(16).toString('utf8').match(/<string>(.*?)<\/string>/)?.[1];
+  console.log('BUID:', buid);
+  sock1.destroy();
+
+  // Step 2: ListDevices on fresh connection
+  console.log('\nStep 2: ListDevices...');
+  const sock2 = await connect();
+  sock2.write(makePacket({
+    ClientVersionString: 'qt4i-usbmuxd',
+    MessageType: 'ListDevices',
+    ProgName: 'pymobiledevice3',
+    kLibUSBMuxVersion: 3,
+  }, 2));
+  const resp2 = await recvFull(sock2);
+  sock2.destroy();
+
+  const body = resp2.slice(16).toString('utf8');
+  const errMatch = body.match(/<key>Number<\/key>\s*<integer>(\d+)<\/integer>/);
+  if (errMatch) {
+    console.log('Error code:', errMatch[1]);
+  } else {
+    const serials = [...body.matchAll(/<key>SerialNumber<\/key>\s*<string>(.*?)<\/string>/g)].map(m => m[1]);
+    console.log('SUCCESS! Devices:', serials);
+  }
+}
+
+main().catch(console.error);

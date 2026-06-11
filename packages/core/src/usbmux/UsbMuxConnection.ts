@@ -90,29 +90,38 @@ export abstract class UsbMuxConnection {
 
   /**
    * Create appropriate MuxConnection instance (Binary or Plist)
+   * Follows pymobiledevice3 flow: probe with ReadBUID, close, then open real connection
    */
   public static async create(usbmuxAddress?: string): Promise<UsbMuxConnection> {
-    // Probe to determine protocol version
     const probeSocket = await UsbMuxConnection.createUsbmuxSocket(usbmuxAddress);
 
     try {
-      // Send probe message to detect version
-      // Implementation will be in PlistMuxConnection
-      // For now, we'll default to Plist protocol (modern version)
+      // Send ReadBUID probe to detect version (same as pymobiledevice3)
+      const plistXml = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>MessageType</key>\n\t<string>ReadBUID</string>\n</dict>\n</plist>\n`;
+      const payload = Buffer.from(plistXml, 'utf8');
+      const header = Buffer.alloc(12);
+      header.writeUInt32LE(UsbMuxVersion.PLIST, 0);
+      header.writeUInt32LE(8, 4); // PLIST message type
+      header.writeUInt32LE(1, 8); // tag
+      const packet = Buffer.concat([header, payload]);
+      const lenBuf = Buffer.alloc(4);
+      lenBuf.writeUInt32LE(packet.length + 4, 0); // length includes itself
+      await new Promise<void>((resolve, reject) => {
+        probeSocket.write(Buffer.concat([lenBuf, packet]), (err) => err ? reject(err) : resolve());
+      });
+      // Read response (ignore content, just need version from header)
+      await new Promise<void>((resolve) => {
+        probeSocket.once('data', () => resolve());
+        setTimeout(resolve, 2000);
+      });
+    } finally {
       probeSocket.destroy();
-    } catch (error) {
-      probeSocket.destroy();
-      throw error;
     }
 
-    // Create new connection
+    // Open fresh connection for actual use (same as pymobiledevice3)
     const socket = await UsbMuxConnection.createUsbmuxSocket(usbmuxAddress);
-
-    // Default to PlistMuxConnection (most common)
-    // BinaryMuxConnection will be implemented if needed
-    const connection = new (await import('./PlistMuxConnection')).PlistMuxConnection(socket);
-
-    return connection;
+    const { PlistMuxConnection } = await import('./PlistMuxConnection');
+    return new PlistMuxConnection(socket);
   }
 
   /**

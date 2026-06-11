@@ -52,9 +52,9 @@ export class PlistMuxConnection extends UsbMuxConnection {
     const payload = Buffer.from(plistData, 'utf8');
     const packet = Buffer.concat([header, payload]);
 
-    // Add length prefix
+    // Length prefix includes itself (4 bytes) - matches Python's includelength=True
     const lengthPrefix = Buffer.alloc(4);
-    lengthPrefix.writeUInt32LE(packet.length, 0);
+    lengthPrefix.writeUInt32LE(packet.length + 4, 0);
 
     const fullPacket = Buffer.concat([lengthPrefix, packet]);
 
