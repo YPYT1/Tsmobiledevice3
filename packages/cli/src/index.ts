@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
 import { execFileSync } from 'child_process';
-import { listDevices, LockdownService, ServiceFactory } from '@ts-mobiledevice/core';
+import { listDevices, LockdownService, ServiceFactory, DevicePool } from '@ts-mobiledevice/core';
 
 const program = new Command();
 
@@ -606,6 +606,80 @@ devCmd
           console.log(`${String(p.pid ?? '').padEnd(8)}${String(p.name ?? '').padEnd(40)}${p.realAppName ?? ''}`);
         }
       }
+    }
+  });
+
+// pool commands
+const poolCmd = program.command('pool').description('Multi-device pool operations');
+
+poolCmd
+  .command('devices')
+  .description('List all devices with status')
+  .option('-j, --json', 'Output as JSON')
+  .action(async (options) => {
+    let pool: DevicePool | undefined;
+    try {
+      pool = await DevicePool.connect();
+      const devices = pool.getDevices();
+      if (options.json) {
+        console.log(JSON.stringify(devices.map((d) => ({ udid: d.serial, connectionType: d.connectionType })), null, 2));
+      } else {
+        if (!devices.length) { console.log('No devices connected.'); return; }
+        for (const d of devices) {
+          console.log(`  UDID: ${d.serial}  [${d.connectionType}]`);
+        }
+      }
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`);
+      process.exit(1);
+    } finally {
+      pool?.close();
+    }
+  });
+
+poolCmd
+  .command('screenshot')
+  .description('Take screenshot on all devices in parallel')
+  .requiredOption('-o, --out-dir <dir>', 'Output directory')
+  .action(async (options) => {
+    let pool: DevicePool | undefined;
+    try {
+      pool = await DevicePool.connect();
+      const devices = pool.getDevices();
+      if (!devices.length) { console.log('No devices connected.'); return; }
+      console.log(`Capturing ${devices.length} device(s) in parallel...`);
+      fs.mkdirSync(options.outDir, { recursive: true });
+      const results = await Promise.all(
+        devices.map((d) => screenshotOne(d.serial, options.outDir, false))
+      );
+      for (const r of results) {
+        if (r.error) console.error(`  [${r.udid.slice(0, 8)}] FAIL: ${r.error}`);
+        else console.log(`  [${r.udid.slice(0, 8)}] ${r.dest}`);
+      }
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`);
+      process.exit(1);
+    } finally {
+      pool?.close();
+    }
+  });
+
+poolCmd
+  .command('watch')
+  .description('Watch device connect/disconnect events (Ctrl+C to exit)')
+  .action(async () => {
+    let pool: DevicePool | undefined;
+    try {
+      pool = await DevicePool.connect();
+      console.log('Watching for device events... (Ctrl+C to exit)');
+      pool.on('device:connected', (d: any) => console.log(`[+] connected:    ${d.serial} [${d.connectionType}]`));
+      pool.on('device:disconnected', (serial: string) => console.log(`[-] disconnected: ${serial}`));
+      process.on('SIGINT', () => { pool!.close(); process.exit(0); });
+      await new Promise(() => {}); // keep alive
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`);
+      pool?.close();
+      process.exit(1);
     }
   });
 

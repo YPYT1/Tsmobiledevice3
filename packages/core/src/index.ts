@@ -21,3 +21,6 @@ export * from './remote';
 // Common types and exceptions
 export * from './exceptions';
 export * from './types';
+
+// DevicePool — 第4代核心
+export * from './pool';
