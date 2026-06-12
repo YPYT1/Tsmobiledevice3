@@ -1,0 +1,24 @@
+name: Deploy API Docs
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/core/src/**'
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+        working-directory: packages/core
+      - run: npm run docs
+        working-directory: packages/core
+      - uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: packages/core/docs

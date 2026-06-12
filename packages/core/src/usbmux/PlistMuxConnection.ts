@@ -20,7 +20,23 @@ function extractIpAddress(props: any): string | undefined {
     const m = String(props.EscapedFullServiceName).match(/^([\d.a-fA-F:]+)@/);
     if (m) return m[1];
   }
-  // NetworkAddress is a binary plist Buffer with a sockaddr structure; skip binary parsing
+  // NetworkAddress is a sockaddr buffer: 2 bytes family + 2 bytes port + address bytes
+  if (props.NetworkAddress instanceof Buffer && props.NetworkAddress.length >= 4) {
+    const buf = props.NetworkAddress;
+    const family = buf.readUInt16BE(0); // AF_INET=2, AF_INET6=10 (or 30 on macOS)
+    if ((family === 2 || family === 0x0200) && buf.length >= 8) {
+      // sockaddr_in: 2 family + 2 port + 4 addr
+      return `${buf[4]}.${buf[5]}.${buf[6]}.${buf[7]}`;
+    }
+    if ((family === 10 || family === 30 || family === 0x1e) && buf.length >= 24) {
+      // sockaddr_in6: 2 family + 2 port + 4 flowinfo + 16 addr
+      const parts: string[] = [];
+      for (let i = 0; i < 16; i += 2) {
+        parts.push(buf.readUInt16BE(8 + i).toString(16));
+      }
+      return parts.join(':').replace(/(:0)+:/, '::');
+    }
+  }
   return undefined;
 }
 

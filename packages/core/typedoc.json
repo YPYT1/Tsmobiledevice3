@@ -1,0 +1,12 @@
+{
+  "entryPoints": ["src/index.ts"],
+  "out": "docs",
+  "name": "@tsmobiledevice/core API",
+  "readme": "README.md",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "navigationLinks": {
+    "GitHub": "https://github.com/YPYT1/Tsmobiledevice3",
+    "npm": "https://www.npmjs.com/package/@tsmobiledevice/core"
+  }
+}

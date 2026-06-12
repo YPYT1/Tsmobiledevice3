@@ -1,7 +1,7 @@
 {
   "name": "@tsmobiledevice/cli",
   "version": "0.1.0",
-  "description": "CLI tool for iOS device communication",
+  "description": "CLI tool for iOS device communication — tsmobiledevice command",
   "main": "dist/index.js",
   "bin": {
     "tsmobiledevice": "./dist/index.js"

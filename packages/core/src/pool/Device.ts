@@ -20,13 +20,15 @@ async function withLockdown<T>(udid: string, fn: (svc: LockdownService) => Promi
 export class Device {
   readonly udid: string;
   readonly connectionType: 'USB' | 'Network';
+  readonly ipAddress?: string;
   private readonly devid: number;
-  private _info?: { udid: string; deviceName: string; productVersion: string; productType: string; serialNumber: string };
+  private _info?: { udid: string; deviceName: string; productVersion: string; productType: string; serialNumber: string; ipAddress?: string };
 
-  constructor(devid: number, udid: string, connectionType: 'USB' | 'Network') {
+  constructor(devid: number, udid: string, connectionType: 'USB' | 'Network', ipAddress?: string) {
     this.devid = devid;
     this.udid = udid;
     this.connectionType = connectionType;
+    this.ipAddress = ipAddress;
   }
 
   get info(): Promise<{ udid: string; deviceName: string; productVersion: string; productType: string; serialNumber: string }> {
@@ -42,6 +44,7 @@ export class Device {
         productVersion: svc.productVersion,
         productType: svc.productType ?? '',
         serialNumber,
+        ipAddress: this.ipAddress,
       };
       return this._info;
     });
@@ -81,7 +84,7 @@ export class Device {
         const devInfo = await dvt.deviceInfo();
         const list = await devInfo.proclist();
         await devInfo.close();
-        return list.map((p: any) => ({ pid: p.pid, name: p.name, path: p.realAppName ?? '' }));
+        return list.map((p: { pid: number; name: string; realAppName?: string }) => ({ pid: p.pid, name: p.name, path: p.realAppName ?? '' }));
       } finally {
         dvt.close();
       }
