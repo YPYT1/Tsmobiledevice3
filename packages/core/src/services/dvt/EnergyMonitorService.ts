@@ -1,5 +1,11 @@
 import { DvtServiceProvider, DtxChannel } from '../../dtx/provider';
 
+export interface EnergySample {
+  pid: number;
+  energy?: Record<string, number>;
+  [key: string]: any;
+}
+
 export class EnergyMonitorService {
   static readonly IDENTIFIER = 'com.apple.xcode.debug-gauge-data-providers.Energy';
 
@@ -14,8 +20,18 @@ export class EnergyMonitorService {
     await this.ch.invoke('stopSamplingForPIDs:', [pids], false);
   }
 
-  async sample(pids: number[]): Promise<any> {
+  /** Single sample for a set of PIDs. */
+  async sample(pids: number[]): Promise<EnergySample[]> {
     return this.ch.invoke('sampleAttributes:forPIDs:', [{}, pids]);
+  }
+
+  /** Stream samples — yields after each channel message. Call start() first. */
+  async *samples(): AsyncGenerator<EnergySample[]> {
+    while (true) {
+      const { selector, args } = await this.ch.recv();
+      if (selector === '__closed__') break;
+      if (args.length > 0) yield args[0] as EnergySample[];
+    }
   }
 
   async close(): Promise<void> { this.ch.close(); }

@@ -1,10 +1,22 @@
 import { DvtServiceProvider, DtxChannel } from '../../dtx/provider';
 
+export interface GraphicsSample {
+  /** Frames per second (CoreAnimation). */
+  CoreAnimationFramesPerSecond?: number;
+  /** GPU resident memory in bytes. */
+  GPUAbsoluteResidentMemory?: number;
+  [key: string]: any;
+}
+
 export class GraphicsService {
   static readonly IDENTIFIER = 'com.apple.instruments.server.services.graphics.opengl';
 
   constructor(private ch: DtxChannel) {}
 
+  /**
+   * Start sampling.
+   * @param interval Sampling interval in seconds (0 = device default ~1s).
+   */
   async start(interval = 0.0): Promise<void> {
     await this.ch.invoke('startSamplingAtTimeInterval:', [interval]);
   }
@@ -13,11 +25,11 @@ export class GraphicsService {
     await this.ch.invoke('stopSampling', [], false);
   }
 
-  async *samples(): AsyncGenerator<any> {
+  async *samples(): AsyncGenerator<GraphicsSample> {
     while (true) {
       const { selector, args } = await this.ch.recv();
       if (selector === '__closed__') break;
-      if (args.length > 0) yield args[0];
+      if (args.length > 0) yield args[0] as GraphicsSample;
     }
   }
 

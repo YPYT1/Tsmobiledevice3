@@ -9,18 +9,15 @@ import { ProcessControlService } from '../services/dvt/ProcessControlService';
 import { ApplicationListingService } from '../services/dvt/ApplicationListingService';
 import { SysmontapService } from '../services/dvt/SysmontapService';
 import { ScreenshotDvtService } from '../services/dvt/ScreenshotDvtService';
+import { EnergyMonitorService } from '../services/dvt/EnergyMonitorService';
+import { NetworkMonitorService } from '../services/dvt/NetworkMonitorService';
+import { GraphicsService } from '../services/dvt/GraphicsService';
+import { ConditionInducerService } from '../services/dvt/ConditionInducerService';
 
-async function openDvtSocket(
-  lockdown: LockdownService,
-  usbmuxAddress?: string,
-): Promise<net.Socket> {
-  // Try RSD service first (iOS ≥17), fall back to legacy service
+async function openDvtSocket(lockdown: LockdownService, usbmuxAddress?: string): Promise<net.Socket> {
   let serviceResult: { port: number; enableSSL: boolean } | null = null;
   for (const name of [DvtServiceProvider.RSD_SERVICE_NAME, DvtServiceProvider.SERVICE_NAME]) {
-    try {
-      serviceResult = await lockdown.startService(name);
-      break;
-    } catch { /* try next */ }
+    try { serviceResult = await lockdown.startService(name); break; } catch { /* try next */ }
   }
   if (!serviceResult) throw new Error('No DVT service available');
   const { port: rawPort, enableSSL } = serviceResult;
@@ -55,11 +52,15 @@ export class DvtFactory {
     return new DvtFactory(dvt);
   }
 
-  deviceInfo() { return DeviceInfoService.create(this.dvt); }
-  processControl() { return ProcessControlService.create(this.dvt); }
+  deviceInfo()         { return DeviceInfoService.create(this.dvt); }
+  processControl()     { return ProcessControlService.create(this.dvt); }
   applicationListing() { return ApplicationListingService.create(this.dvt); }
-  sysmontap() { return SysmontapService.create(this.dvt); }
-  screenshot() { return ScreenshotDvtService.create(this.dvt); }
+  sysmontap()          { return SysmontapService.create(this.dvt); }
+  screenshot()         { return ScreenshotDvtService.create(this.dvt); }
+  energyMonitor()      { return EnergyMonitorService.create(this.dvt); }
+  networkMonitor()     { return NetworkMonitorService.create(this.dvt); }
+  graphics()           { return GraphicsService.create(this.dvt); }
+  conditionInducer()   { return ConditionInducerService.create(this.dvt); }
 
   close() { this.dvt.close(); }
 }

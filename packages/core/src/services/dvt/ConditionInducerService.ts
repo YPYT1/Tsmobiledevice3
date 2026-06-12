@@ -1,16 +1,32 @@
 import { DvtServiceProvider, DtxChannel } from '../../dtx/provider';
 
+export interface ConditionProfile {
+  identifier: string;
+  name?: string;
+  description?: string;
+}
+
+export interface ConditionGroup {
+  identifier: string;
+  name?: string;
+  profiles?: ConditionProfile[];
+}
+
 export class ConditionInducerService {
   static readonly IDENTIFIER = 'com.apple.instruments.server.services.ConditionInducer';
 
   constructor(private ch: DtxChannel) {}
 
-  async list(): Promise<any[]> {
+  async list(): Promise<ConditionGroup[]> {
     return await this.ch.invoke('availableConditionInducers') ?? [];
   }
 
+  async getActive(): Promise<string | null> {
+    return await this.ch.invoke('activeCondition') ?? null;
+  }
+
   async set(profileIdentifier: string): Promise<void> {
-    const groups: any[] = await this.list();
+    const groups = await this.list();
     for (const group of groups) {
       for (const profile of group.profiles ?? []) {
         if (profile.identifier === profileIdentifier) {
@@ -19,7 +35,7 @@ export class ConditionInducerService {
         }
       }
     }
-    throw new Error(`Unknown profile identifier: ${profileIdentifier}`);
+    throw new Error(`Unknown condition profile: ${profileIdentifier}`);
   }
 
   async clear(): Promise<void> {

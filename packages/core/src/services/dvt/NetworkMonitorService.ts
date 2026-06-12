@@ -1,5 +1,14 @@
 import { DvtServiceProvider, DtxChannel } from '../../dtx/provider';
 
+export interface NetworkEvent {
+  type?: string;
+  interface?: string;
+  bytesIn?: number;
+  bytesOut?: number;
+  pid?: number;
+  [key: string]: any;
+}
+
 export class NetworkMonitorService {
   static readonly IDENTIFIER = 'com.apple.instruments.server.services.networking';
 
@@ -13,11 +22,11 @@ export class NetworkMonitorService {
     await this.ch.invoke('stopMonitoring', [], false);
   }
 
-  async *events(): AsyncGenerator<any> {
+  async *events(): AsyncGenerator<NetworkEvent> {
     while (true) {
       const { selector, args } = await this.ch.recv();
       if (selector === '__closed__') break;
-      yield { selector, args };
+      if (args.length > 0) yield args[0] as NetworkEvent;
     }
   }
 

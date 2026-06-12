@@ -290,8 +290,9 @@ const appsCmd = program.command('apps').description('App management operations')
 
 appsCmd
   .command('list')
-  .description('List user applications')
+  .description('List applications')
   .option('-u, --udid <udid>', 'Target device UDID')
+  .option('-t, --type <type>', 'App type: User (default), System, Any', 'User')
   .action(async (options) => {
     const { lockdown, factory } = await getService(options.udid).catch((e) => {
       console.error(`Error: ${e.message}`);
@@ -300,7 +301,7 @@ appsCmd
     try {
       const proxy = await factory.installationProxy();
       try {
-        const apps = await proxy.getApps('User');
+        const apps = await proxy.getApps(options.type as 'User' | 'System' | 'Any');
         for (const [bundleId, info] of Object.entries(apps as Record<string, any>)) {
           console.log(`  ${bundleId}  (${info.CFBundleDisplayName ?? info.CFBundleName ?? ''})`);
         }
@@ -437,6 +438,7 @@ syslogCmd
   .description('Stream syslog in real-time (Ctrl+C to stop)')
   .option('-u, --udid <udid>', 'Target device UDID')
   .option('--match <pattern>', 'Only show lines matching pattern (regex)')
+  .option('--pid <pid>', 'Filter by process ID')
   .action(async (options) => {
     const { lockdown, factory } = await getService(options.udid).catch((e) => {
       console.error(`Error: ${e.message}`);
@@ -448,9 +450,11 @@ syslogCmd
       process.exit(1);
     });
     const filter = options.match ? new RegExp(options.match) : null;
+    const pidStr = options.pid ? ` [${options.pid}]` : null;
     process.on('SIGINT', () => { svc.close(); lockdown.close(); process.exit(0); });
     try {
       for await (const line of svc.lines()) {
+        if (pidStr && !line.includes(pidStr)) continue;
         if (!filter || filter.test(line)) process.stdout.write(line + '\n');
       }
     } finally {
@@ -707,8 +711,9 @@ poolCmd
 
 devCmd
   .command('perf [udid]')
-  .description('Real-time system CPU/memory (1s refresh, Ctrl+C to stop)')
-  .action(async (udid) => {
+  .description('Real-time CPU/memory (1s refresh, Ctrl+C to stop)')
+  .option('--pid <pid>', 'Monitor a specific process by PID')
+  .action(async (udid, options) => {
     const lockdown = await LockdownService.create(udid).catch((e: any) => {
       console.error(`Error: ${e.message}`); process.exit(1);
     });
@@ -719,45 +724,40 @@ devCmd
 
     let stopping = false;
     const infoSvc = await dvt.deviceInfo();
-    const sysAttrs = await infoSvc.sysmonSystemAttributes();
+    const [sysAttrs, procAttrs] = await Promise.all([
+      infoSvc.sysmonSystemAttributes(),
+      infoSvc.sysmonProcessAttributes(),
+    ]);
     await infoSvc.close();
 
+    const pid = options.pid ? [parseInt(options.pid)] : [];
     const svc = await dvt.sysmontap();
-    await svc.start([], sysAttrs, 1000);
+    await svc.start(pid, pid.length ? procAttrs : sysAttrs, 1000);
 
     const cleanup = async () => {
-      if (stopping) return;
-      stopping = true;
-      await svc.stop().catch(() => {});
-      await svc.close();
-      dvt.close();
-      await lockdown.close();
-      process.exit(0);
+      if (stopping) return; stopping = true;
+      await svc.stop().catch(() => {}); await svc.close(); dvt.close(); await lockdown.close(); process.exit(0);
     };
     process.on('SIGINT', cleanup);
 
     for await (const sample of svc.samples()) {
       if (stopping) break;
-      const sys = Array.isArray(sample.SystemCPUUsage)
-        ? sample.SystemCPUUsage[0]
-        : (sample.SystemCPUUsage ?? sample);
-
-      // CPU: CPUTotalLoad or sum of user+system
-      const cpuLoad: number =
-        sys?.CPUTotalLoad ??
-        ((sys?.CPU_TotalLoad ?? 0));
-
-      // Memory in bytes: physMemSize - vmFreeCount*pageSize or physFootprint
-      const memUsedBytes: number = sys?.vmUsedMemory ?? sys?.physMemUsed ?? 0;
-      const memFreeBytes: number = sys?.vmFreeMemory ?? sys?.physMemFree ?? 0;
-
-      const toMB = (b: number) => (b / 1024 / 1024).toFixed(0);
-      const time = new Date().toTimeString().slice(0, 8);
-      const cpu = typeof cpuLoad === 'number' ? cpuLoad.toFixed(1) : '?';
-      const used = memUsedBytes ? `${toMB(memUsedBytes)} MB` : 'N/A';
-      const free = memFreeBytes ? `(free: ${toMB(memFreeBytes)} MB)` : '';
-
-      process.stdout.write(`\r[${time}]  CPU: ${cpu}%  MEM: ${used}  ${free}    `);
+      if (pid.length) {
+        // process-level
+        const procs: any[] = sample.Processes ?? [];
+        const p = procs.find((x: any) => x.Pid === pid[0]);
+        if (!p) continue;
+        const time = new Date().toTimeString().slice(0, 8);
+        process.stdout.write(`\r[${time}]  PID:${pid[0]}  CPU: ${(p.CPUUsage ?? 0).toFixed(1)}%  MEM: ${((p.physFootprint ?? 0) / 1024 / 1024).toFixed(0)} MB    `);
+      } else {
+        const sys = Array.isArray(sample.SystemCPUUsage) ? sample.SystemCPUUsage[0] : (sample.SystemCPUUsage ?? sample);
+        const cpuLoad: number = sys?.CPUTotalLoad ?? sys?.CPU_TotalLoad ?? 0;
+        const memUsed: number = sys?.vmUsedMemory ?? sys?.physMemUsed ?? 0;
+        const memFree: number = sys?.vmFreeMemory ?? sys?.physMemFree ?? 0;
+        const toMB = (b: number) => (b / 1024 / 1024).toFixed(0);
+        const time = new Date().toTimeString().slice(0, 8);
+        process.stdout.write(`\r[${time}]  CPU: ${typeof cpuLoad === 'number' ? cpuLoad.toFixed(1) : '?'}%  MEM: ${memUsed ? toMB(memUsed) + ' MB' : 'N/A'}  ${memFree ? '(free: ' + toMB(memFree) + ' MB)' : ''}    `);
+      }
     }
   });
 
@@ -802,8 +802,190 @@ wiCmd
     }
   });
 
+devCmd
+  .command('energy [udid]')
+  .description('Real-time energy usage per process (Ctrl+C to stop)')
+  .option('--pid <pid>', 'Monitor specific PID (required)')
+  .action(async (udid, options) => {
+    if (!options.pid) { console.error('Error: --pid <pid> is required'); process.exit(1); }
+    const pid = parseInt(options.pid);
+    const lockdown = await LockdownService.create(udid).catch((e: any) => { console.error(`Error: ${e.message}`); process.exit(1); });
+    const factory = new ServiceFactory(lockdown);
+    const dvt = await withDvt(factory, lockdown).catch((e: any) => { console.error(`Error: ${e.message}`); lockdown.close(); process.exit(1); });
+    let stopping = false;
+    const svc = await dvt.energyMonitor();
+    await svc.start([pid]);
+    process.on('SIGINT', async () => {
+      if (stopping) return; stopping = true;
+      await svc.stop([pid]); await svc.close(); dvt.close(); await lockdown.close(); process.exit(0);
+    });
+    for await (const samples of svc.samples()) {
+      if (stopping) break;
+      const s = Array.isArray(samples) ? samples.find((x: any) => x.pid === pid) ?? samples[0] : samples;
+      const time = new Date().toTimeString().slice(0, 8);
+      process.stdout.write(`\r[${time}]  PID:${pid}  ${JSON.stringify(s ?? {}).slice(0, 80)}    `);
+    }
+  });
+
+devCmd
+  .command('network [udid]')
+  .description('Real-time network events (Ctrl+C to stop)')
+  .action(async (udid) => {
+    const lockdown = await LockdownService.create(udid).catch((e: any) => { console.error(`Error: ${e.message}`); process.exit(1); });
+    const factory = new ServiceFactory(lockdown);
+    const dvt = await withDvt(factory, lockdown).catch((e: any) => { console.error(`Error: ${e.message}`); lockdown.close(); process.exit(1); });
+    let stopping = false;
+    const svc = await dvt.networkMonitor();
+    await svc.start();
+    process.on('SIGINT', async () => {
+      if (stopping) return; stopping = true;
+      await svc.stop(); await svc.close(); dvt.close(); await lockdown.close(); process.exit(0);
+    });
+    for await (const ev of svc.events()) {
+      if (stopping) break;
+      const { interface: iface, bytesIn, bytesOut, pid, type, ...rest } = ev;
+      const parts = [type && `type:${type}`, iface && `if:${iface}`, pid && `pid:${pid}`, bytesIn && `in:${bytesIn}`, bytesOut && `out:${bytesOut}`].filter(Boolean);
+      console.log(`  ${parts.join('  ') || JSON.stringify(rest).slice(0, 120)}`);
+    }
+  });
+
+devCmd
+  .command('graphics [udid]')
+  .description('Real-time GPU/FPS (Ctrl+C to stop)')
+  .action(async (udid) => {
+    const lockdown = await LockdownService.create(udid).catch((e: any) => { console.error(`Error: ${e.message}`); process.exit(1); });
+    const factory = new ServiceFactory(lockdown);
+    const dvt = await withDvt(factory, lockdown).catch((e: any) => { console.error(`Error: ${e.message}`); lockdown.close(); process.exit(1); });
+    let stopping = false;
+    const svc = await dvt.graphics();
+    await svc.start();
+    process.on('SIGINT', async () => {
+      if (stopping) return; stopping = true;
+      await svc.stop(); await svc.close(); dvt.close(); await lockdown.close(); process.exit(0);
+    });
+    for await (const s of svc.samples()) {
+      if (stopping) break;
+      const fps = s.CoreAnimationFramesPerSecond ?? '?';
+      const gpu = s.GPUAbsoluteResidentMemory ? `${(s.GPUAbsoluteResidentMemory / 1024 / 1024).toFixed(0)} MB` : 'N/A';
+      const time = new Date().toTimeString().slice(0, 8);
+      process.stdout.write(`\r[${time}]  FPS: ${fps}  GPU mem: ${gpu}    `);
+    }
+  });
+
+// condition commands (network condition simulation — requires DVT)
+const condCmd = program.command('condition').description('Network condition simulation (requires DVT)');
+
+condCmd
+  .command('list [udid]')
+  .description('List available network conditions')
+  .action(async (udid) => {
+    const lockdown = await LockdownService.create(udid).catch((e: any) => { console.error(`Error: ${e.message}`); process.exit(1); });
+    const factory = new ServiceFactory(lockdown);
+    const dvt = await withDvt(factory, lockdown).catch((e: any) => { console.error(`Error: ${e.message}`); lockdown.close(); process.exit(1); });
+    try {
+      const svc = await dvt.conditionInducer();
+      const groups = await svc.list();
+      const active = await svc.getActive();
+      for (const g of groups) {
+        console.log(`\n  ${g.name ?? g.identifier}`);
+        for (const p of g.profiles ?? []) {
+          const mark = p.identifier === active ? ' ← active' : '';
+          console.log(`    ${p.identifier}  ${p.name ?? ''}${mark}`);
+        }
+      }
+      await svc.close();
+    } finally { dvt.close(); await lockdown.close(); }
+  });
+
+condCmd
+  .command('set <profileId> [udid]')
+  .description('Enable a network condition')
+  .action(async (profileId, udid) => {
+    const lockdown = await LockdownService.create(udid).catch((e: any) => { console.error(`Error: ${e.message}`); process.exit(1); });
+    const factory = new ServiceFactory(lockdown);
+    const dvt = await withDvt(factory, lockdown).catch((e: any) => { console.error(`Error: ${e.message}`); lockdown.close(); process.exit(1); });
+    try {
+      const svc = await dvt.conditionInducer();
+      await svc.set(profileId);
+      console.log(`Condition set: ${profileId}`);
+      await svc.close();
+    } catch (e: any) { console.error(`Error: ${e.message}`); process.exit(1);
+    } finally { dvt.close(); await lockdown.close(); }
+  });
+
+condCmd
+  .command('clear [udid]')
+  .description('Clear active network condition')
+  .action(async (udid) => {
+    const lockdown = await LockdownService.create(udid).catch((e: any) => { console.error(`Error: ${e.message}`); process.exit(1); });
+    const factory = new ServiceFactory(lockdown);
+    const dvt = await withDvt(factory, lockdown).catch((e: any) => { console.error(`Error: ${e.message}`); lockdown.close(); process.exit(1); });
+    try {
+      const svc = await dvt.conditionInducer();
+      await svc.clear();
+      console.log('Condition cleared.');
+      await svc.close();
+    } finally { dvt.close(); await lockdown.close(); }
+  });
+
+// profile commands (provisioning profiles)
+const profileCmd = program.command('profile').description('Provisioning profile management');
+
+profileCmd
+  .command('list')
+  .description('List installed provisioning profiles')
+  .option('-u, --udid <udid>', 'Target device UDID')
+  .option('-j, --json', 'Output as JSON')
+  .action(async (options) => {
+    const { lockdown, factory } = await getService(options.udid).catch((e) => { console.error(`Error: ${e.message}`); process.exit(1); });
+    try {
+      const svc = await factory.misagent();
+      const profiles = await svc.listProfiles();
+      if (options.json) { console.log(JSON.stringify(profiles, null, 2)); }
+      else {
+        if (!profiles.length) { console.log('No provisioning profiles.'); return; }
+        for (const p of profiles) {
+          const exp = p.expirationDate ? new Date(p.expirationDate).toLocaleDateString() : 'N/A';
+          console.log(`  ${p.uuid}  ${p.name}  (${p.bundleId})  exp: ${exp}`);
+        }
+      }
+      await svc.close();
+    } catch (e: any) { console.error(`Error: ${e.message}`); process.exit(1);
+    } finally { await lockdown.close(); }
+  });
+
+profileCmd
+  .command('install <file>')
+  .description('Install a .mobileprovision file')
+  .option('-u, --udid <udid>', 'Target device UDID')
+  .action(async (file, options) => {
+    const { lockdown, factory } = await getService(options.udid).catch((e) => { console.error(`Error: ${e.message}`); process.exit(1); });
+    try {
+      const data = fs.readFileSync(file);
+      const svc = await factory.misagent();
+      await svc.install(data);
+      console.log(`Installed: ${file}`);
+      await svc.close();
+    } catch (e: any) { console.error(`Error: ${e.message}`); process.exit(1);
+    } finally { await lockdown.close(); }
+  });
+
+profileCmd
+  .command('remove <uuid>')
+  .description('Remove a provisioning profile by UUID')
+  .option('-u, --udid <udid>', 'Target device UDID')
+  .action(async (uuid, options) => {
+    const { lockdown, factory } = await getService(options.udid).catch((e) => { console.error(`Error: ${e.message}`); process.exit(1); });
+    try {
+      const svc = await factory.misagent();
+      await svc.remove(uuid);
+      console.log(`Removed: ${uuid}`);
+      await svc.close();
+    } catch (e: any) { console.error(`Error: ${e.message}`); process.exit(1);
+    } finally { await lockdown.close(); }
+  });
+
 // location commands
-const locCmd = program.command('location').description('Location simulation');
 
 locCmd
   .command('set <lat> <lng>')
