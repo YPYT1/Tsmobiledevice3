@@ -8,7 +8,9 @@
  */
 
 import { UsbMuxConnection, listDevices, selectDevice } from '../src/usbmux';
+import { PlistMuxConnection } from '../src/usbmux/PlistMuxConnection';
 import { ConnectionFailedToUsbmuxdError } from '../src/exceptions';
+import { LOCKDOWN_PORT_USBMUX } from '../src/lockdown/LockdownClient';
 
 describe('Layer 1: usbmux protocol', () => {
   describe('Connection Tests', () => {
@@ -22,8 +24,8 @@ describe('Layer 1: usbmux protocol', () => {
     });
 
     test('should handle connection failure gracefully', async () => {
-      // Try to connect to invalid address
-      await expect(UsbMuxConnection.create('127.0.0.1:9999')).rejects.toThrow();
+      // createUsbmuxSocket directly to a port with nothing listening
+      await expect(UsbMuxConnection.createUsbmuxSocket('0.0.0.1:1')).rejects.toThrow();
     });
   });
 
@@ -92,7 +94,7 @@ describe('Layer 1: usbmux protocol', () => {
 
   describe('Port Connection Tests', () => {
     test('should connect to device lockdown port (62078)', async () => {
-      const mux = await UsbMuxConnection.create();
+      const mux = await PlistMuxConnection.create() as PlistMuxConnection;
 
       try {
         const devices = await mux.listDevices();
@@ -105,8 +107,8 @@ describe('Layer 1: usbmux protocol', () => {
         const device = devices[0];
         console.log(`Connecting to device ${device.serial} on port 62078...`);
 
-        // Connect to lockdown service (port 62078)
-        const socket = await mux.connectDevice(device.devid, 62078);
+        // Port 62078 must be byte-swapped for usbmux protocol
+        const socket = await mux.connectDevice(device.devid, LOCKDOWN_PORT_USBMUX);
 
         expect(socket).toBeDefined();
         expect(socket.destroyed).toBe(false);

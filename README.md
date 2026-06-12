@@ -1,177 +1,135 @@
 # ts-mobiledevice
 
-TypeScript implementation of `pymobiledevice3` - Pure TypeScript library for iOS device communication.
+TypeScript implementation of [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) — iOS device communication library.
 
-## 🚧 Status: Under Development
+## Features
 
-**Current Progress**: Layer 1 (usbmux protocol) - Implementation complete, awaiting real device testing
+| Layer | Protocol | Status |
+|-------|----------|--------|
+| 1 | usbmux — device discovery & port forwarding | ✅ |
+| 2 | lockdown — device pairing & service management | ✅ |
+| 3 | Services — AFC, screenshots, syslog, diagnostics, 30+ services | ✅ |
+| 4 | DTX — Instruments/DVT (process list, app list, performance) | ✅ |
+| 5 | RemoteXPC / RSD — iOS 17+ remote service discovery | ✅ |
 
-## 📋 Project Structure
+## Requirements
 
-This is a **Monorepo** project using Lerna and TypeScript, designed to support both:
-- 🛠️ **CLI Tool**: Command-line interface for iOS device operations
-- 📦 **NPM Package**: Library for NestJS and other TypeScript projects
+- Node.js ≥ 18
+- pnpm ≥ 8
+- **Windows**: iTunes installed (provides AMDS on port 27015)
+- **macOS/Linux**: usbmuxd running
+- iOS device connected via USB
 
-```
-ts-mobiledevice/
-├── packages/
-│   ├── core/           # Core protocol library
-│   │   ├── src/
-│   │   │   ├── usbmux/        # Layer 1: Device discovery & port forwarding
-│   │   │   ├── lockdown/     # Layer 2: Pairing & service management (TODO)
-│   │   │   ├── services/     # Layer 3: AFC, InstallationProxy, etc. (TODO)
-│   │   │   ├── dtx/          # Layer 4: Developer tools protocol (TODO)
-│   │   │   └── remote/        # Layer 5: RemoteXPC for iOS 17+ (TODO)
-│   │   └── tests/             # Real device tests
-│   └── cli/            # CLI tool
-└── docs/               # Design documents
-```
-
-## 🎯 Features
-
-### ✅ Layer 1: usbmux Protocol (Completed)
-- Device discovery (USB and Network)
-- TCP port forwarding
-- Cross-platform support (Windows/Linux/macOS)
-- Plist protocol implementation
-
-### 🚧 Layer 2: lockdown Protocol (In Progress)
-- Pairing management
-- Service connection
-- SSL upgrade
-
-### 📅 Layer 3-6: Coming Soon
-- AFC file transfer
-- Application management
-- DTX developer tools
-- RemoteXPC (iOS 17+)
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-**Windows:**
-- Install iTunes or Apple Mobile Device Support
-- AMDS must be running on `127.0.0.1:27015`
-
-**Linux:**
-```bash
-sudo apt-get install usbmuxd
-```
-
-**macOS:**
-- Native support (no additional installation required)
-
-### Installation
+## Install
 
 ```bash
-# Clone repository
-git clone https://github.com/YPYT1/Tsmobiledevice3.git
-cd ts-mobiledevice
-
-# Install dependencies
-npm install
-
-# Build project
-npm run build
+pnpm install
 ```
 
-### Usage
+## Usage
 
-#### CLI Tool
-```bash
-# List connected devices
-npm run dev -- usbmux list
-
-# Output as JSON
-npm run dev -- usbmux list --json
-```
-
-#### NPM Package (Coming Soon)
 ```typescript
-import { listDevices } from '@ts-mobiledevice/core';
+import { LockdownService, ServiceFactory } from '@ts-mobiledevice/core';
 
-const devices = await listDevices();
-console.log('Connected devices:', devices);
+const lockdown = await LockdownService.create();
+console.log('Device:', lockdown.udid, lockdown.productVersion);
+
+const factory = new ServiceFactory(lockdown);
+
+const afc = await factory.afc();
+const files = await afc.listdir('/');
+await afc.close();
+
+await lockdown.close();
 ```
 
-## 🧪 Testing
+### DTX / Instruments (requires DeveloperDiskImage)
 
-### Real Device Testing (Required)
+```typescript
+import { LockdownService, DvtFactory } from '@ts-mobiledevice/core';
+
+const lockdown = await LockdownService.create();
+const dvt = await DvtFactory.create(lockdown);
+
+const info = await dvt.deviceInfo();
+const procs = await info.proclist();
+console.log(`${procs.length} processes`);
+await info.close();
+
+dvt.close();
+await lockdown.close();
+```
+
+### RemoteXPC / RSD (iOS 17+)
+
+```typescript
+import { RemoteServiceDiscovery } from '@ts-mobiledevice/core';
+
+// Requires USB tunnel: pymobiledevice3 remote start-tunnel
+const rsd = new RemoteServiceDiscovery('::1');
+await rsd.connect();
+console.log('Services:', Object.keys(rsd.peerInfo?.Services ?? {}));
+rsd.close();
+```
+
+## Available Services
+
+| Method | Service |
+|--------|---------|
+| `factory.afc()` | File system (AFC) |
+| `factory.syslog()` | System log stream |
+| `factory.screenshot()` | Screen capture |
+| `factory.installationProxy()` | App install/uninstall |
+| `factory.springBoard()` | SpringBoard icon state |
+| `factory.diagnostics()` | Battery, sleep, restart |
+| `factory.simulateLocation()` | GPS simulation |
+| `factory.notificationProxy()` | Push notification relay |
+| `factory.mobileBackup2()` | Device backup |
+| `factory.webInspector()` | WebKit remote debug |
+| `factory.houseArrest(bundleId)` | Per-app file access |
+| `factory.crashReports()` | Crash log retrieval |
+| `factory.osTrace()` | OS trace log stream |
+| `factory.pcapd()` | Network packet capture |
+| `factory.imageMounter()` | DeveloperDiskImage mount |
+| `factory.mobileConfig()` | MDM profile management |
+| `dvt.deviceInfo()` | System info, process list |
+| `dvt.processControl()` | Launch/kill processes |
+| `dvt.applicationListing()` | Installed app enumeration |
+| `dvt.sysmontap()` | CPU/memory monitoring |
+| `dvt.screenshot()` | DVT screenshot |
+
+## Testing
+
+Tests require a real iOS device connected via USB.
 
 ```bash
-# Run Layer 1 tests (usbmux)
-npm run test:layer1
-
-# Expected output:
-# ✓ should connect to usbmuxd daemon
-# ✓ should list connected devices
-# ✓ should connect to device lockdown port (62078)
+pnpm test
 ```
 
-**Test Requirements:**
-- At least one iOS device connected via USB
-- iTunes AMDS running (Windows) or usbmuxd (Linux/macOS)
+Layer 4 (DTX) requires DeveloperDiskImage mounted. Layer 5 (RSD) requires iOS 17+ and a USB tunnel.
 
-## 📚 Architecture
+## Build
 
-### Layered Implementation
-
-```
-┌─────────────────────────────────────┐
-│ Layer 6: CLI Tool                   │
-├─────────────────────────────────────┤
-│ Layer 5: RemoteXPC (iOS 17+)       │
-├─────────────────────────────────────┤
-│ Layer 4: DTX Protocol               │
-├─────────────────────────────────────┤
-│ Layer 3: Services (AFC, Apps, etc) │
-├─────────────────────────────────────┤
-│ Layer 2: Lockdown Protocol          │ ← Next
-├─────────────────────────────────────┤
-│ Layer 1: usbmux Protocol           │ ← ✅ Complete
-└─────────────────────────────────────┘
-```
-
-Each layer must pass **real device tests** before proceeding to the next.
-
-## 🔧 Development
-
-### Build
 ```bash
-npm run build
+pnpm run build
 ```
 
-### Lint
-```bash
-npm run lint
+## Project Structure
+
+```
+packages/core/src/
+├── usbmux/          # Layer 1: usbmux protocol
+├── lockdown/        # Layer 2: lockdown protocol
+├── services/        # Layer 3: all lockdown services
+│   └── dvt/         # Layer 4: DTX/Instruments services
+├── dtx/             # Layer 4: DTX binary protocol
+└── remote/          # Layer 5: RemoteXPC / RSD (iOS 17+)
 ```
 
-### Test
-```bash
-# Test all layers
-npm run test
-
-# Test specific layer
-npm run test:layer1
-npm run test:layer2
-npm run test:layer3
-```
-
-## 📖 Documentation
-
-- [Design Document](./docs/superpowers/specs/2026-06-11-ts-mobiledevice-design.md)
-- [Protocol Reference](./docs/superpowers/specs/2026-06-11-ts-mobiledevice-design.md#分层实施计划)
-
-## 🤝 Contributing
-
-This project is under active development. Contributions are welcome!
-
-## 📝 License
-
-GPL-3.0-or-later
-
-## 🙏 Credits
+## Credits
 
 - Original Python implementation: [pymobiledevice3](https://github.com/doronz88/pymobiledevice3)
-- Protocol reference: [libimobiledevice](https://github.com/libimobiledevice/libimobiledevice)
+
+## License
+
+GPL-3.0-or-later

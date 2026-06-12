@@ -7,16 +7,16 @@
 export * from './usbmux';
 
 // Layer 2: lockdown protocol
-// export * from './lockdown';
+export * from './lockdown';
 
 // Layer 3: services
-// export * from './services';
+export * from './services';
 
 // Layer 4: DTX protocol
-// export * from './dtx';
+export * from './dtx';
 
-// Layer 5: RemoteXPC protocol
-// export * from './remote';
+// Layer 5: RemoteXPC protocol (iOS 17+)
+export * from './remote';
 
 // Common types and exceptions
 export * from './exceptions';

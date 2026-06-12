@@ -27,45 +27,26 @@ export class PlistMuxConnection extends UsbMuxConnection {
    */
   private async send(data: any): Promise<void> {
     this.assertNotConnected();
+    if (!this.socket) throw new MuxException('Socket not connected');
 
-    if (!this.socket) {
-      throw new MuxException('Socket not connected');
-    }
-
-    // Build plist request
-    const request: any = {
+    const request = {
       ClientVersionString: 'qt4i-usbmuxd',
       ProgName: 'ts-mobiledevice',
       kLibUSBMuxVersion: 3,
+      ...data,
     };
-    Object.assign(request, data);
+    const payload = Buffer.from(plist.build(request), 'utf8');
+    // Single allocation: 4 (len) + 4 (version) + 4 (msgtype) + 4 (tag) + payload
+    const packet = Buffer.alloc(16 + payload.length);
+    packet.writeUInt32LE(packet.length, 0);
+    packet.writeUInt32LE(this.version, 4);
+    packet.writeUInt32LE(UsbMuxMessageType.PLIST, 8);
+    packet.writeUInt32LE(this.tag, 12);
+    payload.copy(packet, 16);
 
-    // Convert to plist XML
-    const plistData = plist.build(request);
-
-    // Build usbmux packet
-    const header = Buffer.alloc(12);
-    header.writeUInt32LE(this.version, 0); // version
-    header.writeUInt32LE(UsbMuxMessageType.PLIST, 4); // message type
-    header.writeUInt32LE(this.tag, 8); // tag
-
-    const payload = Buffer.from(plistData, 'utf8');
-    const packet = Buffer.concat([header, payload]);
-
-    // Length prefix includes itself (4 bytes) - matches Python's includelength=True
-    const lengthPrefix = Buffer.alloc(4);
-    lengthPrefix.writeUInt32LE(packet.length + 4, 0);
-
-    const fullPacket = Buffer.concat([lengthPrefix, packet]);
-
-    // Send packet
     await new Promise<void>((resolve, reject) => {
-      this.socket!.write(fullPacket, (error) => {
-        if (error) reject(error);
-        else resolve();
-      });
+      this.socket!.write(packet, (err) => err ? reject(err) : resolve());
     });
-
     this.tag++;
   }
 
@@ -75,10 +56,9 @@ export class PlistMuxConnection extends UsbMuxConnection {
   private async receive(expectedTag?: number): Promise<any> {
     this.assertNotConnected();
 
-    // Receive complete packet
     const packet = await this.recvPacket();
 
-    // Parse header (first 12 bytes)
+    // packet: length(4) + version(4) + msgtype(4) + tag(4) + plist
     const version = packet.readUInt32LE(4);
     const messageType = packet.readUInt32LE(8);
     const tag = packet.readUInt32LE(12);

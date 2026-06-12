@@ -33,8 +33,9 @@
   },
   "engines": {
     "node": ">=18.0.0",
-    "npm": ">=9.0.0"
+    "pnpm": ">=8.0.0"
   },
+  "packageManager": "pnpm@8.15.4",
   "author": "YPYT1",
   "license": "GPL-3.0-or-later",
   "repository": {

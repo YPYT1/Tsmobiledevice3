@@ -15,6 +15,7 @@ module.exports = {
   moduleNameMapper: {
     '^@ts-mobiledevice/core$': '<rootDir>/src/index.ts',
   },
-  testTimeout: 30000, // 30 seconds for real device tests
+  testTimeout: 30000,
   verbose: true,
+  forceExit: true,
 };

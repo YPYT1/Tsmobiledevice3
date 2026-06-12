@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist",
-    "test": "jest",
+    "test": "jest --runInBand",
     "test:layer1": "jest --testPathPattern=usbmux",
     "test:layer2": "jest --testPathPattern=lockdown",
     "test:layer3": "jest --testPathPattern=services",

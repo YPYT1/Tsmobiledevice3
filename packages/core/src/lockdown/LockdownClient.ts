@@ -1,9 +1,6 @@
 import net from 'net';
 import tls from 'tls';
 import plist from 'plist';
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
 import { MuxException, NotPairedError } from '../exceptions';
 
 const LOCKDOWN_PORT = 62078;
@@ -21,7 +18,7 @@ export interface LockdownValue {
 export class LockdownClient {
   private socket: net.Socket | tls.TLSSocket;
   private sessionId: string | null = null;
-  private pairRecord: LockdownValue | null = null;
+  public pairRecord: LockdownValue | null = null;
   public allValues: LockdownValue = {};
   public udid: string | null = null;
   public productVersion: string = '1.0';
@@ -150,28 +147,20 @@ export class LockdownClient {
   }
 
   async upgradeToSSL(certPem: Buffer, keyPem: Buffer): Promise<void> {
-    // Write cert+key to temp file for tls.connect
-    const tmpFile = path.join(os.tmpdir(), `lockdown-ssl-${Date.now()}.pem`);
-    fs.writeFileSync(tmpFile, Buffer.concat([certPem, Buffer.from('\n'), keyPem]));
-
-    try {
-      const rawSocket = this.socket as net.Socket;
-      const tlsSocket = await new Promise<tls.TLSSocket>((resolve, reject) => {
-        const s = tls.connect({
-          socket: rawSocket,
-          rejectUnauthorized: false,
-          cert: certPem,
-          key: keyPem,
-          minVersion: 'TLSv1.2',
-        });
-        s.once('secureConnect', () => resolve(s));
-        s.once('error', reject);
-        setTimeout(() => reject(new Error('TLS handshake timeout')), 10000);
+    const rawSocket = this.socket as net.Socket;
+    const tlsSocket = await new Promise<tls.TLSSocket>((resolve, reject) => {
+      const s = tls.connect({
+        socket: rawSocket,
+        rejectUnauthorized: false,
+        cert: certPem,
+        key: keyPem,
+        minVersion: 'TLSv1.2',
       });
-      this.socket = tlsSocket;
-    } finally {
-      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
-    }
+      s.once('secureConnect', () => resolve(s));
+      s.once('error', reject);
+      setTimeout(() => reject(new Error('TLS handshake timeout')), 10000);
+    });
+    this.socket = tlsSocket;
   }
 
   async validatePairing(pairRecord: LockdownValue): Promise<boolean> {
@@ -210,5 +199,6 @@ export class LockdownClient {
   async close(): Promise<void> {
     try { await this.stopSession(); } catch { /* ignore */ }
     this.socket.destroy();
+    this.socket.unref();
   }
 }

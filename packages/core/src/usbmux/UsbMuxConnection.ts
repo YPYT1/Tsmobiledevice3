@@ -92,33 +92,37 @@ export abstract class UsbMuxConnection {
    * Create appropriate MuxConnection instance (Binary or Plist)
    * Follows pymobiledevice3 flow: probe with ReadBUID, close, then open real connection
    */
-  public static async create(usbmuxAddress?: string): Promise<UsbMuxConnection> {
-    const probeSocket = await UsbMuxConnection.createUsbmuxSocket(usbmuxAddress);
+  // Cache: once probed successfully, always plist — usbmuxd version is stable per process lifetime
+  private static probeCache = new Set<string>();
 
-    try {
-      // Send ReadBUID probe to detect version (same as pymobiledevice3)
-      const plistXml = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>MessageType</key>\n\t<string>ReadBUID</string>\n</dict>\n</plist>\n`;
-      const payload = Buffer.from(plistXml, 'utf8');
-      const header = Buffer.alloc(12);
-      header.writeUInt32LE(UsbMuxVersion.PLIST, 0);
-      header.writeUInt32LE(8, 4); // PLIST message type
-      header.writeUInt32LE(1, 8); // tag
-      const packet = Buffer.concat([header, payload]);
-      const lenBuf = Buffer.alloc(4);
-      lenBuf.writeUInt32LE(packet.length + 4, 0); // length includes itself
-      await new Promise<void>((resolve, reject) => {
-        probeSocket.write(Buffer.concat([lenBuf, packet]), (err) => err ? reject(err) : resolve());
-      });
-      // Read response (ignore content, just need version from header)
-      await new Promise<void>((resolve) => {
-        probeSocket.once('data', () => resolve());
-        setTimeout(resolve, 2000);
-      });
-    } finally {
-      probeSocket.destroy();
+  public static async create(usbmuxAddress?: string): Promise<UsbMuxConnection> {
+    const cacheKey = usbmuxAddress ?? '__default__';
+    if (!UsbMuxConnection.probeCache.has(cacheKey)) {
+      const probeSocket = await UsbMuxConnection.createUsbmuxSocket(usbmuxAddress);
+      try {
+        const plistXml = `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0">\n<dict>\n\t<key>MessageType</key>\n\t<string>ReadBUID</string>\n</dict>\n</plist>\n`;
+        const payload = Buffer.from(plistXml, 'utf8');
+        const header = Buffer.alloc(12);
+        header.writeUInt32LE(UsbMuxVersion.PLIST, 0);
+        header.writeUInt32LE(8, 4);
+        header.writeUInt32LE(1, 8);
+        const packet = Buffer.alloc(16 + payload.length);
+        packet.writeUInt32LE(packet.length, 0);
+        header.copy(packet, 4);
+        payload.copy(packet, 16);
+        await new Promise<void>((resolve, reject) => {
+          probeSocket.write(packet, (err) => err ? reject(err) : resolve());
+        });
+        await new Promise<void>((resolve) => {
+          probeSocket.once('data', resolve);
+          setTimeout(resolve, 500);
+        });
+      } finally {
+        probeSocket.destroy();
+      }
+      UsbMuxConnection.probeCache.add(cacheKey);
     }
 
-    // Open fresh connection for actual use (same as pymobiledevice3)
     const socket = await UsbMuxConnection.createUsbmuxSocket(usbmuxAddress);
     const { PlistMuxConnection } = await import('./PlistMuxConnection');
     return new PlistMuxConnection(socket);
@@ -178,17 +182,11 @@ export abstract class UsbMuxConnection {
    * Receive a complete usbmux packet (with length prefix)
    */
   protected async recvPacket(): Promise<Buffer> {
-    // Read length prefix (4 bytes, little-endian uint32)
-    const lengthBuffer = await this.recvExactly(4);
-    const size = lengthBuffer.readUInt32LE(0);
-
-    if (size < 4) {
-      throw new MuxException(`Invalid usbmux packet size: ${size}`);
-    }
-
-    // Read remaining payload
+    const lenBuf = await this.recvExactly(4);
+    const size = lenBuf.readUInt32LE(0);
+    if (size < 16) throw new MuxException(`Invalid usbmux packet size: ${size}`);
     const payload = await this.recvExactly(size - 4);
-    return Buffer.concat([lengthBuffer, payload]);
+    return Buffer.concat([lenBuf, payload]);
   }
 
   /**
@@ -204,6 +202,7 @@ export abstract class UsbMuxConnection {
   public async close(): Promise<void> {
     if (this.socket) {
       this.socket.destroy();
+      this.socket.unref();
       this.socket = null;
     }
     this.connected = false;
