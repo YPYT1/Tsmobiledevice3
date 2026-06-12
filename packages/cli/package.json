@@ -1,11 +1,14 @@
 {
   "name": "@ts-mobiledevice/cli",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "CLI tool for iOS device communication",
   "main": "dist/index.js",
   "bin": {
     "tsmobiledevice": "./dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist",
@@ -14,7 +17,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@ts-mobiledevice/core": "^0.0.1",
+    "@ts-mobiledevice/core": "^0.1.0",
     "commander": "^11.0.0",
     "chalk": "^5.3.0",
     "ora": "^7.0.1",

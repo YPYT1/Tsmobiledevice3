@@ -41,6 +41,7 @@ export interface UsbMuxDevice {
   devid: number;
   serial: string;
   connectionType: 'USB' | 'Network';
+  ipAddress?: string;  // Wi-Fi 设备的 IP
 }
 
 // usbmuxd connect request data

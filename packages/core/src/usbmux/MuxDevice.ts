@@ -6,11 +6,13 @@ export class MuxDevice {
   public readonly devid: number;
   public readonly serial: string;
   public readonly connectionType: 'USB' | 'Network';
+  public readonly ipAddress?: string;
 
-  constructor(devid: number, serial: string, connectionType: 'USB' | 'Network') {
+  constructor(devid: number, serial: string, connectionType: 'USB' | 'Network', ipAddress?: string) {
     this.devid = devid;
     this.serial = serial;
     this.connectionType = connectionType;
+    this.ipAddress = ipAddress;
   }
 
   /**

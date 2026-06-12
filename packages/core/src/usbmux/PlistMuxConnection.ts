@@ -14,6 +14,16 @@ import {
   UsbMuxDevice,
 } from './types';
 
+function extractIpAddress(props: any): string | undefined {
+  // EscapedFullServiceName looks like "192.168.1.100@...", extract the IP part
+  if (props.EscapedFullServiceName) {
+    const m = String(props.EscapedFullServiceName).match(/^([\d.a-fA-F:]+)@/);
+    if (m) return m[1];
+  }
+  // NetworkAddress is a binary plist Buffer with a sockaddr structure; skip binary parsing
+  return undefined;
+}
+
 export class PlistMuxConnection extends UsbMuxConnection {
   private version = UsbMuxVersion.PLIST;
 
@@ -112,10 +122,12 @@ export class PlistMuxConnection extends UsbMuxConnection {
     // Parse device list
     for (const item of deviceList) {
       if (item.MessageType === 'Attached') {
+        const props = item.Properties;
         const device: UsbMuxDevice = {
           devid: item.DeviceID,
-          serial: item.Properties.SerialNumber,
-          connectionType: item.Properties.ConnectionType,
+          serial: props.SerialNumber,
+          connectionType: props.ConnectionType,
+          ipAddress: extractIpAddress(props),
         };
         this.devices.push(device);
       }

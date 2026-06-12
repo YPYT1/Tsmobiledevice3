@@ -52,6 +52,25 @@ usbmuxCmd
     }
   });
 
+usbmuxCmd
+  .command('listen')
+  .description('Listen for device attach/detach events in real-time (Ctrl+C to exit)')
+  .action(async () => {
+    let pool: DevicePool | undefined;
+    try {
+      pool = await DevicePool.connect();
+      console.log('Listening for device events... (Ctrl+C to exit)');
+      pool.on('device:connected', (d: any) => console.log(`[+] attached:  ${d.serial} [${d.connectionType}]`));
+      pool.on('device:disconnected', (serial: string) => console.log(`[-] detached:  ${serial}`));
+      process.on('SIGINT', () => { pool!.close(); process.exit(0); });
+      await new Promise(() => {});
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`);
+      pool?.close();
+      process.exit(1);
+    }
+  });
+
 // lockdown commands
 const lockdownCmd = program.command('lockdown').description('Lockdown protocol operations');
 
@@ -622,11 +641,13 @@ poolCmd
       pool = await DevicePool.connect();
       const devices = pool.getDevices();
       if (options.json) {
-        console.log(JSON.stringify(devices.map((d) => ({ udid: d.serial, connectionType: d.connectionType })), null, 2));
+        console.log(JSON.stringify(devices.map((d) => ({ udid: d.serial, connectionType: d.connectionType, ipAddress: d.ipAddress })), null, 2));
       } else {
         if (!devices.length) { console.log('No devices connected.'); return; }
         for (const d of devices) {
-          console.log(`  UDID: ${d.serial}  [${d.connectionType}]`);
+          const label = d.connectionType === 'Network' ? 'Wi-Fi' : d.connectionType;
+          const ip = d.connectionType === 'Network' && d.ipAddress ? `  ${d.ipAddress}` : '';
+          console.log(`  UDID: ${d.serial}  [${label}]${ip}`);
         }
       }
     } catch (e: any) {
@@ -680,6 +701,103 @@ poolCmd
       console.error(`Error: ${e.message}`);
       pool?.close();
       process.exit(1);
+    }
+  });
+
+devCmd
+  .command('perf [udid]')
+  .description('Real-time system CPU/memory (1s refresh, Ctrl+C to stop)')
+  .action(async (udid) => {
+    const lockdown = await LockdownService.create(udid).catch((e: any) => {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    });
+    const factory = new ServiceFactory(lockdown);
+    const dvt = await withDvt(factory, lockdown).catch((e: any) => {
+      console.error(`Error: ${e.message}`); lockdown.close(); process.exit(1);
+    });
+
+    let stopping = false;
+    const infoSvc = await dvt.deviceInfo();
+    const sysAttrs = await infoSvc.sysmonSystemAttributes();
+    await infoSvc.close();
+
+    const svc = await dvt.sysmontap();
+    await svc.start([], sysAttrs, 1000);
+
+    const cleanup = async () => {
+      if (stopping) return;
+      stopping = true;
+      await svc.stop().catch(() => {});
+      await svc.close();
+      dvt.close();
+      await lockdown.close();
+      process.exit(0);
+    };
+    process.on('SIGINT', cleanup);
+
+    for await (const sample of svc.samples()) {
+      if (stopping) break;
+      const sys = Array.isArray(sample.SystemCPUUsage)
+        ? sample.SystemCPUUsage[0]
+        : (sample.SystemCPUUsage ?? sample);
+
+      // CPU: CPUTotalLoad or sum of user+system
+      const cpuLoad: number =
+        sys?.CPUTotalLoad ??
+        ((sys?.CPU_TotalLoad ?? 0));
+
+      // Memory in bytes: physMemSize - vmFreeCount*pageSize or physFootprint
+      const memUsedBytes: number = sys?.vmUsedMemory ?? sys?.physMemUsed ?? 0;
+      const memFreeBytes: number = sys?.vmFreeMemory ?? sys?.physMemFree ?? 0;
+
+      const toMB = (b: number) => (b / 1024 / 1024).toFixed(0);
+      const time = new Date().toTimeString().slice(0, 8);
+      const cpu = typeof cpuLoad === 'number' ? cpuLoad.toFixed(1) : '?';
+      const used = memUsedBytes ? `${toMB(memUsedBytes)} MB` : 'N/A';
+      const free = memFreeBytes ? `(可用: ${toMB(memFreeBytes)} MB)` : '';
+
+      process.stdout.write(`\r[${time}]  CPU: ${cpu}%  内存: ${used}  ${free}    `);
+    }
+  });
+
+// webinspector commands
+const wiCmd = program.command('webinspector').description('WebInspector protocol operations');
+
+wiCmd
+  .command('list [udid]')
+  .description('List open Safari pages (URL + title)')
+  .action(async (udid) => {
+    const { lockdown, factory } = await getService(udid).catch((e: any) => {
+      if (e.message?.includes('InvalidService')) {
+        console.error('Error: WebInspector service unavailable.\nEnable it: Settings → Safari → Advanced → Web Inspector');
+      } else {
+        console.error(`Error: ${e.message}`);
+      }
+      process.exit(1);
+    });
+    try {
+      const wi = await factory.webInspector();
+      try {
+        const pages = await wi.getOpenPages();
+        if (!pages.length) {
+          console.log('No open pages found.');
+        } else {
+          for (const p of pages) {
+            console.log(`  [${p.title || '(no title)'}]  ${p.url}`);
+          }
+        }
+      } finally {
+        await wi.close();
+      }
+    } catch (error: any) {
+      if (error.message?.includes('InvalidService')) {
+        console.error('Error: WebInspector service unavailable.\nEnable it: Settings → Safari → Advanced → Web Inspector');
+      } else {
+        console.error(`Error: ${error.message}`);
+      }
+      process.exit(1);
+    } finally {
+      await lockdown.close();
     }
   });
 

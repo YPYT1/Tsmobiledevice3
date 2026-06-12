@@ -24,7 +24,7 @@ export class DevicePool extends EventEmitter {
 
     const devices = new Map<string, MuxDevice>();
     for (const d of initialDevices) {
-      devices.set(d.serial, new MuxDevice(d.devid, d.serial, d.connectionType));
+      devices.set(d.serial, new MuxDevice(d.devid, d.serial, d.connectionType, d.ipAddress));
     }
 
     const pool = new DevicePool(devices);
@@ -43,7 +43,7 @@ export class DevicePool extends EventEmitter {
           const response = await (listenConn as any).receive();
           if (response.MessageType === 'Attached') {
             const { DeviceID, Properties } = response;
-            const device = new MuxDevice(DeviceID, Properties.SerialNumber, Properties.ConnectionType);
+            const device = new MuxDevice(DeviceID, Properties.SerialNumber, Properties.ConnectionType, Properties.EscapedFullServiceName?.match(/^([\d.a-fA-F:]+)@/)?.[1]);
             pool.devices.set(device.serial, device);
             pool.emit('device:connected', device);
           } else if (response.MessageType === 'Detached') {

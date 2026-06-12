@@ -1,9 +1,13 @@
 {
   "name": "@ts-mobiledevice/core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Core library for iOS device communication - protocol layers and services",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -b",
     "clean": "rimraf dist",
@@ -36,7 +40,10 @@
     "usbmux",
     "lockdown",
     "afc",
-    "mobiledevice"
+    "mobiledevice",
+    "typescript",
+    "mobile",
+    "device-pool"
   ],
   "author": "YPYT1",
   "license": "GPL-3.0-or-later",
