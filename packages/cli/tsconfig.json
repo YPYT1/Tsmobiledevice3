@@ -6,7 +6,7 @@
     "composite": true,
     "baseUrl": ".",
     "paths": {
-      "@ts-mobiledevice/core": ["../core/src"]
+      "@tsmobiledevice/core": ["../core/src"]
     }
   },
   "include": ["src/**/*"],

@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import readline from 'readline';
 import { execFileSync } from 'child_process';
-import { listDevices, LockdownService, ServiceFactory, DevicePool } from '@ts-mobiledevice/core';
+import { listDevices, LockdownService, ServiceFactory, DevicePool } from '@tsmobiledevice/core';
 
 const program = new Command();
 

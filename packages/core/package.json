@@ -1,5 +1,5 @@
 {
-  "name": "@ts-mobiledevice/core",
+  "name": "@tsmobiledevice/core",
   "version": "0.1.0",
   "description": "Core library for iOS device communication - protocol layers and services",
   "main": "dist/index.js",

@@ -1,5 +1,5 @@
 /**
- * @ts-mobiledevice/core
+ * @tsmobiledevice/core
  * Core library for iOS device communication
  */
 

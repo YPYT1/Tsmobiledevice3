@@ -1,158 +1,135 @@
-# ts-mobiledevice
+# tsmobiledevice
 
 **English** | [中文](./README.zh.md)
 
-A complete TypeScript port of [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) — a full-stack iOS device communication library for Node.js, covering all five protocol layers from raw USB multiplexing to iOS 17+ RemoteXPC service discovery.
+4th-generation TypeScript iOS device communication library — a complete rewrite of [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) for Node.js, with a multi-device pool, hot-plug events, and a full CLI tool.
 
-## Why ts-mobiledevice?
+[![npm](https://img.shields.io/npm/v/@tsmobiledevice/core)](https://www.npmjs.com/package/@tsmobiledevice/core)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
-pymobiledevice3 is the definitive iOS device library, but it requires a Python runtime and does not integrate naturally into Node.js/TypeScript toolchains. ts-mobiledevice brings the same protocol coverage to the JavaScript ecosystem with several concrete improvements:
+## Why tsmobiledevice?
 
-| Area | Improvement over pymobiledevice3 |
-|------|----------------------------------|
-| **Runtime** | Pure Node.js — no Python, no subprocess bridging, no IPC overhead |
-| **Type safety** | Full TypeScript types for every protocol message, service response, and error path |
-| **Buffer efficiency** | DTX engine uses a chunk-list accumulator and zero-copy `Buffer.subarray` slices; no premature concat on partial frames |
-| **Connection probing** | usbmux probe result cached per address (`probeCache`) — protocol detection runs once per process lifetime, not per connection |
-| **Port encoding** | Explicit byte-swap (`writeUInt16BE` / `readUInt16LE`) for usbmux's mixed-endian port encoding — correct by construction, not by accident |
-| **TLS upgrade** | In-place socket promotion via `tls.connect({ socket })` — no TCP reconnect on lockdown session start |
-| **RemoteXPC** | 64-bit message IDs stored as native `bigint` — no JS `Number` precision loss on large counters; H2 receive window pre-set to 16 MiB to avoid incremental round-trips |
-| **Error handling** | Lockdown error strings mapped through a typed dispatch table — exhaustive, zero switch-chain |
-| **Cross-platform** | Automatic usbmux address selection: iTunes AMDS (`127.0.0.1:27015`) on Windows, Unix socket on Linux/macOS; overridable via env |
+| | pymobiledevice3 | tsmobiledevice |
+|---|---|---|
+| Runtime | Python 3 | Node.js ≥ 18 |
+| Type safety | ❌ | ✅ Full TypeScript |
+| Multi-device pool | ❌ | ✅ `DevicePool` |
+| Hot-plug events | ❌ | ✅ `device:connected / disconnected` |
+| Parallel broadcast | ❌ | ✅ `pool.broadcast()` |
+| npm package | ❌ | ✅ `@tsmobiledevice/core` |
+| Protocol coverage | 5 layers | 5 layers ✅ |
 
 ## Protocol Coverage
 
 | Layer | Protocol | Status |
 |-------|----------|--------|
 | 1 | usbmux — device discovery & TCP port forwarding | ✅ |
-| 2 | lockdown — device pairing, TLS session, service brokering | ✅ |
-| 3 | 30+ lockdown services — AFC, diagnostics, syslog, screenshot… | ✅ |
-| 4 | DTX binary protocol — Instruments / DVT services | ✅ |
-| 5 | RemoteXPC / RSD — iOS 17+ tunnel-based service discovery | ✅ |
+| 2 | lockdown — pairing, TLS session, service brokering | ✅ |
+| 3 | 30+ services — AFC, diagnostics, syslog, screenshots… | ✅ |
+| 4 | DTX — Instruments / DVT binary protocol | ✅ |
+| 5 | RemoteXPC / RSD — iOS 17+ tunnel service discovery | ✅ |
+
+## CLI Quick Start
+
+```bash
+npm install -g @tsmobiledevice/cli   # or use npx
+
+tsmobiledevice usbmux list           # list connected devices
+tsmobiledevice lockdown info         # show device info
+tsmobiledevice afc ls /              # browse device filesystem
+tsmobiledevice apps list             # list installed apps
+tsmobiledevice syslog live           # stream system log
+tsmobiledevice developer screenshot  # take screenshot
+tsmobiledevice pool devices          # all devices + connection type
+tsmobiledevice pool watch            # hot-plug event monitor
+tsmobiledevice pool screenshot       # parallel screenshot all devices
+```
+
+## Library Quick Start
+
+```bash
+npm install @tsmobiledevice/core
+```
+
+```typescript
+import { DevicePool } from '@tsmobiledevice/core';
+
+const pool = await DevicePool.connect();
+
+pool.on('device:connected', (device) => {
+  console.log('New device:', device.udid);
+});
+
+// Screenshot all connected devices at once
+const results = await pool.broadcast(async (device) => {
+  return await device.screenshot();
+});
+
+pool.close();
+```
+
+## CLI Commands
+
+```
+usbmux:
+  tsmobiledevice usbmux list            list connected devices
+  tsmobiledevice usbmux listen          stream hot-plug events
+
+lockdown:
+  tsmobiledevice lockdown info          device info
+  tsmobiledevice lockdown pair          pairing status
+
+afc:
+  tsmobiledevice afc ls <path>          list directory
+  tsmobiledevice afc pull <r> <l>       download file/directory
+  tsmobiledevice afc push <l> <r>       upload file/directory
+  tsmobiledevice afc shell              interactive AFC shell
+
+apps:
+  tsmobiledevice apps list              list user apps
+  tsmobiledevice apps install <ipa>     install IPA
+  tsmobiledevice apps uninstall <id>    uninstall app
+
+syslog:
+  tsmobiledevice syslog live            stream syslog (--match <regex>)
+
+developer:  (requires DDI — auto-mounted on demand)
+  tsmobiledevice developer screenshot   take screenshot (--all for all devices)
+  tsmobiledevice developer processes    list running processes (--all)
+  tsmobiledevice developer perf         CPU/memory monitor
+
+pool:  (4th-gen multi-device API)
+  tsmobiledevice pool devices           list all devices
+  tsmobiledevice pool screenshot        parallel screenshot all devices
+  tsmobiledevice pool watch             hot-plug event monitor
+
+webinspector:
+  tsmobiledevice webinspector list      list Safari pages
+  tsmobiledevice webinspector open      open URL in Safari
+```
 
 ## Requirements
 
 - Node.js ≥ 18
-- pnpm ≥ 8
-- **Windows**: iTunes installed (provides AMDS on port 27015)
-- **macOS / Linux**: usbmuxd running
-- iOS device connected via USB
+- **Windows**: iTunes installed (provides AMDS on `127.0.0.1:27015`)
+- **macOS / Linux**: `usbmuxd` running
+- iOS device connected via USB (trusted)
 
-## Installation
+## Build from Source
 
 ```bash
+git clone https://github.com/YPYT1/Tsmobiledevice3.git
+cd Tsmobiledevice3
 pnpm install
+pnpm run build
 ```
-
-## Quick Start
-
-```typescript
-import { LockdownService, ServiceFactory } from '@ts-mobiledevice/core';
-
-const lockdown = await LockdownService.create();
-console.log(lockdown.udid, lockdown.productVersion);
-
-const factory = new ServiceFactory(lockdown);
-
-// File system access
-const afc = await factory.afc();
-const entries = await afc.listdir('/');
-await afc.close();
-
-// Diagnostics
-const diag = await factory.diagnostics();
-const battery = await diag.getBattery();
-await diag.close();
-
-await lockdown.close();
-```
-
-### DTX / Instruments (requires DeveloperDiskImage or iOS 17+)
-
-```typescript
-import { LockdownService, DvtFactory } from '@ts-mobiledevice/core';
-
-const lockdown = await LockdownService.create();
-const dvt = await DvtFactory.create(lockdown);
-
-const info = await dvt.deviceInfo();
-const procs = await info.proclist();
-console.log(`${procs.length} running processes`);
-await info.close();
-
-dvt.close();
-await lockdown.close();
-```
-
-### RemoteXPC / RSD (iOS 17+)
-
-```typescript
-import { RemoteServiceDiscovery } from '@ts-mobiledevice/core';
-
-// Start tunnel first: pymobiledevice3 remote start-tunnel
-const rsd = new RemoteServiceDiscovery('::1');
-await rsd.connect();
-console.log(Object.keys(rsd.peerInfo?.Services ?? {}));
-rsd.close();
-```
-
-## Available Services
-
-**Lockdown services** (via `ServiceFactory`)
-
-| Method | Description |
-|--------|-------------|
-| `factory.afc()` | File system access (AFC protocol) |
-| `factory.syslog()` | Real-time system log stream |
-| `factory.screenshot()` | Screen capture (PNG) |
-| `factory.installationProxy()` | App install / uninstall / list |
-| `factory.springBoard()` | SpringBoard icon state |
-| `factory.diagnostics()` | Battery info, sleep, restart, shutdown |
-| `factory.simulateLocation()` | GPS location simulation |
-| `factory.notificationProxy()` | Push notification relay |
-| `factory.mobileBackup2()` | iTunes-compatible device backup |
-| `factory.webInspector()` | WebKit remote debug protocol |
-| `factory.houseArrest(bundleId)` | Per-app sandboxed file access |
-| `factory.crashReports()` | Crash log retrieval |
-| `factory.osTrace()` | OS trace log stream |
-| `factory.pcapd()` | Live network packet capture |
-| `factory.imageMounter()` | DeveloperDiskImage mount / unmount |
-| `factory.mobileConfig()` | MDM profile install / remove / list |
-
-**DTX / DVT services** (via `DvtFactory`)
-
-| Method | Description |
-|--------|-------------|
-| `dvt.deviceInfo()` | System information, hardware details, process list |
-| `dvt.processControl()` | Launch, kill, and signal processes |
-| `dvt.applicationListing()` | Enumerate installed applications |
-| `dvt.sysmontap()` | Real-time CPU and memory monitoring |
-| `dvt.screenshot()` | DVT-based screen capture |
 
 ## Project Structure
 
 ```
-packages/core/src/
-├── usbmux/      Layer 1 — usbmux protocol, device enumeration, port forwarding
-├── lockdown/    Layer 2 — pairing, TLS upgrade, service brokering
-├── services/    Layer 3 — all lockdown-brokered services
-│   └── dvt/               DTX-backed DVT services
-├── dtx/         Layer 4 — DTX binary framing, channel multiplexing, aux codec
-└── remote/      Layer 5 — HTTP/2 transport, XPC serialization, RSD
-```
-
-## Testing
-
-All tests require a real iOS device connected via USB. Layer 4 tests additionally require DeveloperDiskImage mounted (or iOS 17+ with automatic mounting). Layer 5 tests require a running USB tunnel.
-
-```bash
-pnpm test
-```
-
-## Build
-
-```bash
-pnpm run build
+packages/
+├── core/   @tsmobiledevice/core — protocol library (npm package)
+└── cli/    @tsmobiledevice/cli  — CLI tool (tsmobiledevice command)
 ```
 
 ## Credits
