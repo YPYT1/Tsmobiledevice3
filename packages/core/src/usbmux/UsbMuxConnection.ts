@@ -113,9 +113,10 @@ export abstract class UsbMuxConnection {
         await new Promise<void>((resolve, reject) => {
           probeSocket.write(packet, (err) => err ? reject(err) : resolve());
         });
-        await new Promise<void>((resolve) => {
-          probeSocket.once('data', resolve);
-          setTimeout(resolve, 500);
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, 500);
+          probeSocket.once('data', () => { clearTimeout(timer); resolve(); });
+          probeSocket.once('error', (e) => { clearTimeout(timer); reject(e); });
         });
       } finally {
         probeSocket.destroy();

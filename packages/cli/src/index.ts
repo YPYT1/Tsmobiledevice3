@@ -654,6 +654,7 @@ poolCmd
       console.error(`Error: ${e.message}`);
       process.exit(1);
     } finally {
+      pool?.on('error', () => {}); // suppress async listen-loop error after close
       pool?.close();
     }
   });

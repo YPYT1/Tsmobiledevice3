@@ -6,8 +6,6 @@ import { DvtFactory } from '../dtx/DvtFactory';
 import { AfcService } from '../services/AfcService';
 import { InstallationProxy } from '../services/InstallationProxy';
 
-const PYTHON_PATH = path.join(__dirname, '..', '..', '..', '..', 'pymobiledevice3-master', '.venv', 'Scripts', 'python.exe');
-
 async function withLockdown<T>(udid: string, fn: (svc: LockdownService) => Promise<T>): Promise<T> {
   const svc = await LockdownService.create(udid);
   try {
@@ -17,12 +15,22 @@ async function withLockdown<T>(udid: string, fn: (svc: LockdownService) => Promi
   }
 }
 
+function findPython(): string {
+  const candidates = process.platform === 'win32'
+    ? ['python', 'python3', path.join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Python', 'Python311', 'python.exe')]
+    : ['python3', 'python'];
+  for (const p of candidates) {
+    try { execFileSync(p, ['--version'], { stdio: 'ignore' }); return p; } catch { /* next */ }
+  }
+  return 'python';
+}
+
 export class Device {
   readonly udid: string;
   readonly connectionType: 'USB' | 'Network';
   readonly ipAddress?: string;
   private readonly devid: number;
-  private _info?: { udid: string; deviceName: string; productVersion: string; productType: string; serialNumber: string; ipAddress?: string };
+  private _infoPromise?: Promise<{ udid: string; deviceName: string; productVersion: string; productType: string; serialNumber: string; ipAddress?: string }>;
 
   constructor(devid: number, udid: string, connectionType: 'USB' | 'Network', ipAddress?: string) {
     this.devid = devid;
@@ -31,34 +39,28 @@ export class Device {
     this.ipAddress = ipAddress;
   }
 
-  get info(): Promise<{ udid: string; deviceName: string; productVersion: string; productType: string; serialNumber: string }> {
-    if (this._info) return Promise.resolve(this._info);
-    return withLockdown(this.udid, async (svc) => {
-      const [deviceName, serialNumber] = await Promise.all([
-        svc.getValue('DeviceName') as Promise<string>,
-        svc.getValue('SerialNumber') as Promise<string>,
-      ]);
-      this._info = {
-        udid: this.udid,
-        deviceName,
-        productVersion: svc.productVersion,
-        productType: svc.productType ?? '',
-        serialNumber,
-        ipAddress: this.ipAddress,
-      };
-      return this._info;
-    });
+  get info() {
+    if (!this._infoPromise) {
+      this._infoPromise = withLockdown(this.udid, async (svc) => {
+        const [deviceName, serialNumber] = await Promise.all([
+          svc.getValue('DeviceName') as Promise<string>,
+          svc.getValue('SerialNumber') as Promise<string>,
+        ]);
+        return {
+          udid: this.udid,
+          deviceName,
+          productVersion: svc.productVersion,
+          productType: svc.productType ?? '',
+          serialNumber,
+          ipAddress: this.ipAddress,
+        };
+      });
+    }
+    return this._infoPromise;
   }
 
   async screenshot(): Promise<Buffer> {
-    const python = (() => {
-      try {
-        execFileSync(PYTHON_PATH, ['--version'], { stdio: 'ignore' });
-        return PYTHON_PATH;
-      } catch {
-        return 'python';
-      }
-    })();
+    const python = findPython();
 
     execFileSync(python, [
       '-m', 'pymobiledevice3', 'mounter', 'auto-mount', '--udid', this.udid,
@@ -95,22 +97,31 @@ export class Device {
     const svc = await LockdownService.create(this.udid);
     const factory = new ServiceFactory(svc);
     const syslogSvc = await factory.syslog();
-    return syslogSvc.lines();
+    const gen = syslogSvc.lines();
+    return (async function* () {
+      try { yield* gen; } finally { await svc.close(); }
+    })();
   }
 
   async afc(): Promise<AfcService> {
     const svc = await LockdownService.create(this.udid);
     const factory = new ServiceFactory(svc);
-    return factory.afc();
+    const afcSvc = await factory.afc();
+    const origClose = afcSvc.close.bind(afcSvc);
+    afcSvc.close = async () => { await origClose(); svc.close(); };
+    return afcSvc;
   }
 
   async apps(): Promise<InstallationProxy> {
     const svc = await LockdownService.create(this.udid);
     const factory = new ServiceFactory(svc);
-    return factory.installationProxy();
+    const appSvc = await factory.installationProxy();
+    const origClose = appSvc.close.bind(appSvc);
+    appSvc.close = async () => { await origClose(); svc.close(); };
+    return appSvc;
   }
 
   async close(): Promise<void> {
-    // no-op: each method creates and closes its own connection
+    // Each method patches its returned service's close() to also close the lockdown connection.
   }
 }

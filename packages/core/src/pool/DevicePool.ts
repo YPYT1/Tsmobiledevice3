@@ -40,7 +40,7 @@ export class DevicePool extends EventEmitter {
     (async () => {
       while (true) {
         try {
-          const response = await (listenConn as any).receive();
+          const response = await listenConn.receive();
           if (response.MessageType === 'Attached') {
             const { DeviceID, Properties } = response;
             const device = new MuxDevice(DeviceID, Properties.SerialNumber, Properties.ConnectionType, Properties.EscapedFullServiceName?.match(/^([\d.a-fA-F:]+)@/)?.[1]);
@@ -55,7 +55,8 @@ export class DevicePool extends EventEmitter {
               }
             }
           }
-        } catch {
+        } catch (e) {
+          pool.emit('error', e instanceof Error ? e : new Error(String(e)));
           break;
         }
       }

@@ -76,11 +76,17 @@ export class AfcService {
   private pending = new Map<bigint, { resolve: (d: Buffer) => void; reject: (e: Error) => void }>();
   private readChunks: Buffer[] = [];
   private readBufLen = 0;
+  private readonly _boundReadable: () => void;
+  private readonly _boundError: (e: Error) => void;
+  private readonly _boundClose: () => void;
 
   constructor(protected socket: net.Socket) {
-    socket.on('readable', () => this._onReadable());
-    socket.on('error', (e) => this._rejectAll(e));
-    socket.on('close', () => this._rejectAll(new Error('Socket closed')));
+    this._boundReadable = () => this._onReadable();
+    this._boundError = (e: Error) => this._rejectAll(e);
+    this._boundClose = () => this._rejectAll(new Error('Socket closed'));
+    socket.on('readable', this._boundReadable);
+    socket.on('error', this._boundError);
+    socket.on('close', this._boundClose);
   }
 
   static async create(muxSocket: net.Socket): Promise<AfcService> {
@@ -326,6 +332,9 @@ export class AfcService {
 
   async close(): Promise<void> {
     this._rejectAll(new Error('Service closed'));
+    this.socket.removeListener('readable', this._boundReadable);
+    this.socket.removeListener('error', this._boundError);
+    this.socket.removeListener('close', this._boundClose);
     this.socket.destroy();
   }
 }

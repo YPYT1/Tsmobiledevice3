@@ -156,9 +156,9 @@ export class LockdownClient {
         key: keyPem,
         minVersion: 'TLSv1.2',
       });
-      s.once('secureConnect', () => resolve(s));
-      s.once('error', reject);
-      setTimeout(() => reject(new Error('TLS handshake timeout')), 10000);
+      const timer = setTimeout(() => reject(new Error('TLS handshake timeout')), 10000);
+      s.once('secureConnect', () => { clearTimeout(timer); resolve(s); });
+      s.once('error', (e) => { clearTimeout(timer); reject(e); });
     });
     this.socket = tlsSocket;
   }
@@ -172,8 +172,9 @@ export class LockdownClient {
       }
       this.pairRecord = pairRecord;
       return true;
-    } catch {
-      return false;
+    } catch (e) {
+      if (e instanceof MuxException || (e instanceof Error && e.message.includes('session'))) return false;
+      throw e;
     }
   }
 

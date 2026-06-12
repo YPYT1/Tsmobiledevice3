@@ -14,32 +14,28 @@ export class LockdownService {
   /** Connect to the first available device (or by UDID) and return a ready LockdownService. */
   static async create(udid?: string, usbmuxAddress?: string): Promise<LockdownService> {
     const mux = (await UsbMuxConnection.create(usbmuxAddress)) as PlistMuxConnection;
-    const rawDevices = await mux.listDevices();
-    const buid = await mux.getBuid();
-
-    const target = udid
-      ? rawDevices.find(d => d.serial.replace(/-/g, '') === udid.replace(/-/g, ''))
-      : rawDevices[0];
-
-    if (!target) throw new Error(udid ? `Device not found: ${udid}` : 'No device connected');
-
-    const device = new MuxDevice(target.devid, target.serial, target.connectionType as 'USB' | 'Network');
-
-    let pairRecord: LockdownValue | undefined;
+    let socket: net.Socket | undefined;
     try {
-      pairRecord = await mux.getPairRecord(target.serial);
+      const rawDevices = await mux.listDevices();
+      const target = udid
+        ? rawDevices.find(d => d.serial.replace(/-/g, '') === udid.replace(/-/g, ''))
+        : rawDevices[0];
+      if (!target) throw new Error(udid ? `Device not found: ${udid}` : 'No device connected');
+      const device = new MuxDevice(target.devid, target.serial, target.connectionType as 'USB' | 'Network');
+      let pairRecord: LockdownValue | undefined;
+      try {
+        pairRecord = await mux.getPairRecord(target.serial);
+      } catch (e) {
+        if (!(e instanceof NotPairedError)) throw e;
+      }
+      socket = await mux.connectDevice(target.devid, LOCKDOWN_PORT_USBMUX);
+      const client = await LockdownClient.create(socket, pairRecord);
+      if (pairRecord) await client.validatePairing(pairRecord);
+      return new LockdownService(client, device);
     } catch (e) {
-      if (!(e instanceof NotPairedError)) throw e;
+      socket ? socket.destroy() : await mux.close();
+      throw e;
     }
-
-    const socket: net.Socket = await mux.connectDevice(target.devid, LOCKDOWN_PORT_USBMUX);
-    const client = await LockdownClient.create(socket, pairRecord);
-
-    if (pairRecord) {
-      await client.validatePairing(pairRecord);
-    }
-
-    return new LockdownService(client, device);
   }
 
   get udid(): string | null { return this.client.udid; }

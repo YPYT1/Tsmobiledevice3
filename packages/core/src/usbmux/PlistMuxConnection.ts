@@ -79,7 +79,7 @@ export class PlistMuxConnection extends UsbMuxConnection {
   /**
    * Receive plist response
    */
-  private async receive(expectedTag?: number): Promise<any> {
+  public async receive(expectedTag?: number): Promise<any> {
     this.assertNotConnected();
 
     const packet = await this.recvPacket();

@@ -23,6 +23,7 @@ interface FragmentState {
 
 export class DtxConnection extends EventEmitter {
   private msgId = 1;
+  private _closed = false;
   private fragments = new Map<number, FragmentState>();
   private pending = new Map<number, PendingReply>();
   private channels = new Map<number, ChannelHandler>();
@@ -49,10 +50,9 @@ export class DtxConnection extends EventEmitter {
       let hdr: ReturnType<typeof parseFragmentHeader>;
       try {
         hdr = parseFragmentHeader(readBuf);
-      } catch {
-        this.readChunks = [];
-        this.readBufLen = 0;
-        break;
+      } catch (e) {
+        this._onClose(e instanceof Error ? e : new Error('DTX frame parse error'));
+        return;
       }
       const wireBodySize = (hdr.index === 0 && hdr.count > 1) ? 0 : hdr.dataSize;
       const total = hdr.headerSize + wireBodySize;
@@ -157,6 +157,8 @@ export class DtxConnection extends EventEmitter {
   }
 
   private _onClose(err?: Error): void {
+    if (this._closed) return;
+    this._closed = true;
     const e = err ?? new Error('DTX connection closed');
     for (const p of this.pending.values()) p.reject(e);
     this.pending.clear();
@@ -220,7 +222,7 @@ export class DtxConnection extends EventEmitter {
   }
 
   close(): void {
+    this._onClose(new Error('Connection closed'));
     this.socket.destroy();
-    this.socket.unref();
   }
 }
