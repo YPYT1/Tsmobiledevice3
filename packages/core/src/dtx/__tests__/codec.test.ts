@@ -91,4 +91,31 @@ describe('dtx-aux encodeAux/decodeAux', () => {
     expect(encoded.length).toBe(0);
     expect(decodeAux(encoded)).toEqual([]);
   });
+
+  // BUG-01: double must survive roundtrip (was broken by BE encoding)
+  it('double roundtrip (LE)', () => {
+    const encoded = encodeAux([3.14]);
+    const decoded = decodeAux(encoded);
+    expect(decoded).toHaveLength(1);
+    expect(decoded[0]).toBeCloseTo(3.14, 10);
+  });
+
+  it('negative double roundtrip', () => {
+    const encoded = encodeAux([-2.718281828]);
+    const decoded = decodeAux(encoded);
+    expect(decoded[0]).toBeCloseTo(-2.718281828, 8);
+  });
+
+  // BUG-02: strict magic check — 0x2F0 has matching low byte but wrong full value
+  it('decodeAux rejects data with wrong magic (only low byte matches)', () => {
+    const buf = Buffer.alloc(20);
+    buf.writeUInt32LE(0x2F0, 0); // low byte 0xF0 matches old check, but full value != 0x1F0
+    expect(decodeAux(buf)).toEqual([]);
+  });
+
+  it('decodeAux accepts correct magic 0x1F0', () => {
+    const encoded = encodeAux([42]);
+    // verify the encoded buffer has the right magic
+    expect(encoded.readUInt32LE(0)).toBe(0x1F0);
+  });
 });

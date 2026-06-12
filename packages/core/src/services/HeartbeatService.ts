@@ -1,9 +1,12 @@
 import net from 'net';
 import plist from 'plist';
+import { readExactly } from '../utils/socket';
 
 export class HeartbeatService {
   static readonly SERVICE_NAME = 'com.apple.mobile.heartbeat';
   static readonly RSD_SERVICE_NAME = 'com.apple.mobile.heartbeat.shim.remote';
+
+  private _stopped = false;
 
   constructor(private socket: net.Socket) {}
 
@@ -16,47 +19,29 @@ export class HeartbeatService {
   }
 
   private async _recv(): Promise<Record<string, any>> {
-    const lenBuf = await this._readExactly(4);
-    const payload = await this._readExactly(lenBuf.readUInt32BE(0));
+    const lenBuf = await readExactly(this.socket, 4);
+    const payload = await readExactly(this.socket, lenBuf.readUInt32BE(0));
     return plist.parse(payload.toString('utf8')) as Record<string, any>;
   }
 
-  private _readExactly(size: number): Promise<Buffer> {
-    const sock = this.socket;
-    const chunks: Buffer[] = [];
-    let received = 0;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => cleanup(new Error('timeout')), 10000);
-      const tryRead = () => {
-        while (received < size) {
-          const chunk = sock.read(size - received) as Buffer | null;
-          if (!chunk) break;
-          chunks.push(chunk);
-          received += chunk.length;
-        }
-        if (received >= size) { clearTimeout(timer); sock.removeListener('readable', tryRead); sock.removeListener('error', onError); sock.removeListener('close', onClose); resolve(Buffer.concat(chunks).subarray(0, size)); }
-      };
-      const onError = (e: Error) => cleanup(e);
-      const onClose = () => cleanup(new Error('Socket closed'));
-      const cleanup = (e: Error) => { clearTimeout(timer); sock.removeListener('readable', tryRead); sock.removeListener('error', onError); sock.removeListener('close', onClose); reject(e); };
-      sock.on('readable', tryRead);
-      sock.once('error', onError);
-      sock.once('close', onClose);
-      tryRead();
-    });
-  }
-
+  /** Respond to Marco/Polo until stop() is called or intervalMs elapses. */
   async start(intervalMs?: number): Promise<void> {
     const deadline = intervalMs != null ? Date.now() + intervalMs : Infinity;
-    while (Date.now() < deadline) {
+    while (!this._stopped && Date.now() < deadline) {
       const msg = await this._recv();
+      if (this._stopped) break;
       if (msg.Command === 'Marco') {
         await this.sendRecv({ Command: 'Polo' });
       }
     }
   }
 
-  async close(): Promise<void> {
+  stop(): void {
+    this._stopped = true;
     this.socket.destroy();
+  }
+
+  async close(): Promise<void> {
+    this.stop();
   }
 }

@@ -1,10 +1,11 @@
 import net from 'net';
 import tls from 'tls';
 import plist from 'plist';
-import { MuxException, NotPairedError } from '../exceptions';
+import { MuxException, NotPairedError, InvalidHostIDError } from '../exceptions';
+import { readExactly } from '../utils/socket';
 
 const LOCKDOWN_PORT = 62078;
-const DEFAULT_LABEL = 'pymobiledevice3';
+const DEFAULT_LABEL = 'ts-mobiledevice';
 
 // Port 62078 stored big-endian in protocol
 const LOCKDOWN_PORT_LE = Buffer.allocUnsafe(2);
@@ -58,45 +59,7 @@ export class LockdownClient {
   }
 
   private _readExactly(size: number): Promise<Buffer> {
-    const sock = this.socket;
-    const chunks: Buffer[] = [];
-    let received = 0;
-
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => cleanup(new Error('Lockdown recv timeout')), 10000);
-
-      const tryRead = () => {
-        while (received < size) {
-          const chunk = sock.read(size - received) as Buffer | null;
-          if (!chunk) break;
-          chunks.push(chunk);
-          received += chunk.length;
-        }
-        if (received >= size) {
-          clearTimeout(timer);
-          sock.removeListener('readable', tryRead);
-          sock.removeListener('error', onError);
-          sock.removeListener('close', onClose);
-          resolve(Buffer.concat(chunks).subarray(0, size));
-        }
-      };
-
-      const onError = (e: Error) => cleanup(new MuxException(`Socket error: ${e.message}`));
-      const onClose = () => cleanup(new MuxException('Socket closed'));
-
-      const cleanup = (err: Error) => {
-        clearTimeout(timer);
-        sock.removeListener('readable', tryRead);
-        sock.removeListener('error', onError);
-        sock.removeListener('close', onClose);
-        reject(err);
-      };
-
-      sock.on('readable', tryRead);
-      sock.once('error', onError);
-      sock.once('close', onClose);
-      tryRead();
-    });
+    return readExactly(this.socket, size);
   }
 
   private _verifyResponse(request: string, response: LockdownValue): LockdownValue {
@@ -107,7 +70,7 @@ export class LockdownClient {
     if (error) {
       const map: Record<string, new (msg: string) => Error> = {
         NotPaired: NotPairedError,
-        InvalidHostID: MuxException,
+        InvalidHostID: InvalidHostIDError,
         SessionInactive: MuxException,
       };
       const Cls = map[error] || MuxException;
@@ -165,7 +128,7 @@ export class LockdownClient {
 
   async validatePairing(pairRecord: LockdownValue): Promise<boolean> {
     try {
-      const { sessionId, enableSSL } = await this.startSession(pairRecord.HostID, pairRecord.SystemBUID || '30142955-444094379208051516');
+      const { sessionId, enableSSL } = await this.startSession(pairRecord.HostID, pairRecord.SystemBUID ?? '');
       this.sessionId = sessionId;
       if (enableSSL) {
         await this.upgradeToSSL(pairRecord.HostCertificate, pairRecord.HostPrivateKey);

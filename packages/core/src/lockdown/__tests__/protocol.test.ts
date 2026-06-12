@@ -38,3 +38,25 @@ describe('lockdown packet encoding', () => {
     expect(parsed.Value).toBe('17.0');
   });
 });
+
+// BUG-07: _verifyResponse must map InvalidHostID to InvalidHostIDError
+describe('LockdownClient error mapping', () => {
+  it('throws InvalidHostIDError for InvalidHostID response', async () => {
+    const { InvalidHostIDError } = await import('../../exceptions');
+    const { LockdownClient } = await import('../LockdownClient');
+    // Access private _verifyResponse via any-cast; no socket needed
+    const client = new (LockdownClient as any)({} as any);
+    expect(() =>
+      (client as any)._verifyResponse('GetValue', { Request: 'GetValue', Error: 'InvalidHostID' })
+    ).toThrow(InvalidHostIDError);
+  });
+
+  it('throws NotPairedError for NotPaired response', async () => {
+    const { NotPairedError } = await import('../../exceptions');
+    const { LockdownClient } = await import('../LockdownClient');
+    const client = new (LockdownClient as any)({} as any);
+    expect(() =>
+      (client as any)._verifyResponse('GetValue', { Request: 'GetValue', Error: 'NotPaired' })
+    ).toThrow(NotPairedError);
+  });
+});

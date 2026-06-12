@@ -63,7 +63,7 @@ function encodeValue(arg: any): Buffer {
   // float
   const b = Buffer.alloc(12);
   b.writeUInt32LE(PDOUBLE_TAG, 0);
-  b.writeDoubleBE(arg as number, 4);
+  b.writeDoubleLE(arg as number, 4);
   return b;
 }
 
@@ -85,7 +85,7 @@ export function encodeAux(args: any[]): Buffer {
 export function decodeAux(buf: Buffer): any[] {
   if (buf.length < 16) return [];
   const magic = buf.readUInt32LE(0);
-  if ((magic & 0xFF) !== 0xF0) return [];
+  if (magic !== PDICT_MAGIC) return [];
   const bodyLen = Number(buf.readBigUInt64LE(8));
   const args: any[] = [];
   let pos = 16;
@@ -109,7 +109,7 @@ export function decodeAux(buf: Buffer): any[] {
       pos += 4;
       args.push(buf.readBigInt64LE(pos)); pos += 8;
     } else if (tag === PDOUBLE_TAG) {
-      args.push(buf.readDoubleBE(pos)); pos += 8;
+      args.push(buf.readDoubleLE(pos)); pos += 8;
     } else {
       break;
     }

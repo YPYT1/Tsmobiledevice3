@@ -37,8 +37,9 @@ async function openDvtSocket(
         cert: lockdown.client.pairRecord!.HostCertificate,
         key: lockdown.client.pairRecord!.HostPrivateKey,
       });
-      s.once('secureConnect', () => resolve(s as unknown as net.Socket));
-      s.once('error', reject);
+      const timer = setTimeout(() => { s.destroy(); reject(new Error('DVT TLS handshake timeout')); }, 10000);
+      s.once('secureConnect', () => { clearTimeout(timer); resolve(s as unknown as net.Socket); });
+      s.once('error', (e) => { clearTimeout(timer); reject(e); });
     });
   }
   return socket;

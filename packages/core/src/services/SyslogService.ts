@@ -7,7 +7,7 @@ export class SyslogService {
 
   constructor(private socket: net.Socket) {}
 
-  async *lines(): AsyncGenerator<string> {
+  async *lines(signal?: AbortSignal): AsyncGenerator<string> {
     let buf = Buffer.alloc(0);
 
     const chunks: Buffer[] = [];
@@ -31,12 +31,15 @@ export class SyslogService {
       }
     };
 
+    const onAbort = () => { if (resolve) { const r = resolve; resolve = null; r(null); } };
+    if (signal) signal.addEventListener('abort', onAbort);
+
     this.socket.on('data', onData);
     this.socket.on('close', onClose);
     this.socket.on('end', onClose);
 
     try {
-      while (!this.closed) {
+      while (!this.closed && !signal?.aborted) {
         let chunk: Buffer | null;
         if (chunks.length > 0) {
           chunk = chunks.shift()!;
@@ -56,6 +59,7 @@ export class SyslogService {
         }
       }
     } finally {
+      if (signal) signal.removeEventListener('abort', onAbort);
       this.socket.off('data', onData);
       this.socket.off('close', onClose);
       this.socket.off('end', onClose);

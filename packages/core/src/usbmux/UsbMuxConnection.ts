@@ -9,6 +9,7 @@ import {
   MuxVersionError,
 } from '../exceptions';
 import { UsbMuxVersion } from './types';
+import { readExactly } from '../utils/socket';
 
 // Windows: iTunes AMDS
 const ITUNES_HOST = '127.0.0.1';
@@ -133,50 +134,8 @@ export abstract class UsbMuxConnection {
    * Receive exactly N bytes from socket
    */
   protected async recvExactly(size: number): Promise<Buffer> {
-    if (!this.socket) {
-      throw new MuxException('Socket not connected');
-    }
-
-    const sock = this.socket;
-    const chunks: Buffer[] = [];
-    let received = 0;
-
-    // Use readable event + read() to consume data already buffered in the socket
-    return new Promise<Buffer>((resolve, reject) => {
-      const timer = setTimeout(() => cleanup(new MuxException('Socket receive timeout')), 10000);
-
-      const tryRead = () => {
-        while (received < size) {
-          const chunk = sock.read(size - received) as Buffer | null;
-          if (!chunk) break;
-          chunks.push(chunk);
-          received += chunk.length;
-        }
-        if (received >= size) {
-          clearTimeout(timer);
-          sock.removeListener('readable', tryRead);
-          sock.removeListener('error', onError);
-          sock.removeListener('close', onClose);
-          resolve(Buffer.concat(chunks).subarray(0, size));
-        }
-      };
-
-      const onError = (e: Error) => cleanup(new MuxException(`Socket error: ${e.message}`));
-      const onClose = () => cleanup(new MuxException('Socket connection closed'));
-
-      const cleanup = (err: Error) => {
-        clearTimeout(timer);
-        sock.removeListener('readable', tryRead);
-        sock.removeListener('error', onError);
-        sock.removeListener('close', onClose);
-        reject(err);
-      };
-
-      sock.on('readable', tryRead);
-      sock.once('error', onError);
-      sock.once('close', onClose);
-      tryRead(); // consume data already buffered
-    });
+    if (!this.socket) throw new MuxException('Socket not connected');
+    return readExactly(this.socket, size);
   }
 
   /**

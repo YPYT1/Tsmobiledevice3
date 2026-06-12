@@ -1,5 +1,6 @@
 import net from 'net';
 import plist from 'plist';
+import { readExactly } from '../utils/socket';
 
 export class DiagnosticsService {
   static readonly SERVICE_NAME = 'com.apple.mobile.diagnostics_relay';
@@ -25,40 +26,7 @@ export class DiagnosticsService {
   }
 
   private readExactly(size: number): Promise<Buffer> {
-    const sock = this.socket;
-    const chunks: Buffer[] = [];
-    let received = 0;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => cleanup(new Error('recv timeout')), 10000);
-      const tryRead = () => {
-        while (received < size) {
-          const chunk = sock.read(size - received) as Buffer | null;
-          if (!chunk) break;
-          chunks.push(chunk);
-          received += chunk.length;
-        }
-        if (received >= size) {
-          clearTimeout(timer);
-          sock.removeListener('readable', tryRead);
-          sock.removeListener('error', onError);
-          sock.removeListener('close', onClose);
-          resolve(Buffer.concat(chunks).subarray(0, size));
-        }
-      };
-      const onError = (e: Error) => cleanup(e);
-      const onClose = () => cleanup(new Error('Socket closed'));
-      const cleanup = (err: Error) => {
-        clearTimeout(timer);
-        sock.removeListener('readable', tryRead);
-        sock.removeListener('error', onError);
-        sock.removeListener('close', onClose);
-        reject(err);
-      };
-      sock.on('readable', tryRead);
-      sock.once('error', onError);
-      sock.once('close', onClose);
-      tryRead();
-    });
+    return readExactly(this.socket, size);
   }
 
   async queryIORegistry(plane?: string, name?: string, ioClass?: string): Promise<any> {

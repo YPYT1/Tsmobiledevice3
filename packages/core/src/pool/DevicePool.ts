@@ -56,7 +56,7 @@ export class DevicePool extends EventEmitter {
             }
           }
         } catch (e) {
-          pool.emit('error', e instanceof Error ? e : new Error(String(e)));
+          pool._emitErrorSafe(e instanceof Error ? e : new Error(String(e)));
           break;
         }
       }
@@ -87,8 +87,13 @@ export class DevicePool extends EventEmitter {
     );
   }
 
-  close(): void {
-    this.listenConn?.close();
+  // BUG-05: guard against unhandled 'error' event crashing the process
+  _emitErrorSafe(err: Error): void {
+    if (this.listenerCount('error') > 0) this.emit('error', err);
+  }
+
+  async close(): Promise<void> {
+    await this.listenConn?.close();
     this.listenConn = null;
   }
 }

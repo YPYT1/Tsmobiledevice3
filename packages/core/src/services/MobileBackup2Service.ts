@@ -19,12 +19,22 @@ export class MobileBackup2Service extends DeviceLinkService {
     return this.recvProcessMessage();
   }
 
-  async backup(udid: string): Promise<void> {
+  async *backup(udid: string): AsyncGenerator<Record<string, any>> {
     await this.sendProcessMessage({ MessageName: 'Backup', TargetIdentifier: udid });
+    while (true) {
+      const msg = await this.recvProcessMessage();
+      yield msg;
+      if (msg.Error) throw new Error(String(msg.Error));
+    }
   }
 
-  async restore(udid: string, options: Record<string, any> = {}): Promise<void> {
+  async *restore(udid: string, options: Record<string, any> = {}): AsyncGenerator<Record<string, any>> {
     await this.sendProcessMessage({ MessageName: 'Restore', TargetIdentifier: udid, ...options });
+    while (true) {
+      const msg = await this.recvProcessMessage();
+      yield msg;
+      if (msg.Error) throw new Error(String(msg.Error));
+    }
   }
 
   async info(udid: string): Promise<Record<string, any>> {

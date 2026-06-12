@@ -142,19 +142,25 @@ export class AfcService {
     }
   }
 
-  private _send(operation: number, payload: Buffer, thisLengthOverride?: bigint): bigint {
+  // BUG-04: set pending BEFORE write; reject on write error so promise never hangs
+  // P2: 30s timeout prevents callers from hanging when device goes offline mid-transfer
+  private _request(operation: number, payload: Buffer, thisLengthOverride?: bigint, timeoutMs = 30000): Promise<Buffer> {
     const num = this.packetNum++;
-    const entireLength = BigInt(HEADER_SIZE + payload.length);
-    const thisLength = thisLengthOverride ?? entireLength;
-    const hdr = buildHeader(entireLength, thisLength, num, BigInt(operation));
-    this.socket.write(Buffer.concat([hdr, payload]));
-    return num;
-  }
-
-  private _request(operation: number, payload: Buffer, thisLengthOverride?: bigint): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
-      const num = this._send(operation, payload, thisLengthOverride);
-      this.pending.set(num, { resolve, reject });
+      const timer = setTimeout(() => {
+        this.pending.delete(num);
+        reject(new Error(`AFC request timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
+      this.pending.set(num, {
+        resolve: (d) => { clearTimeout(timer); resolve(d); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
+      const entireLength = BigInt(HEADER_SIZE + payload.length);
+      const thisLength = thisLengthOverride ?? entireLength;
+      const hdr = buildHeader(entireLength, thisLength, num, BigInt(operation));
+      this.socket.write(Buffer.concat([hdr, payload]), (err) => {
+        if (err) { clearTimeout(timer); this.pending.delete(num); reject(err); }
+      });
     });
   }
 

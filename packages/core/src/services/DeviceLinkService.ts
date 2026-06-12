@@ -1,8 +1,7 @@
-import net from 'net';
+import * as net from 'net';
 import plist from 'plist';
+import { readExactly } from '../utils/socket';
 
-// DeviceLink is the base for DTX/Instruments services
-// It implements the plist-based framing used before DTX takes over
 export class DeviceLinkService {
   static readonly DL_MESSAGE_VERSION_EXCHANGE = 'DLMessageVersionExchange';
   static readonly DL_MESSAGE_DEVICE_READY = 'DLMessageDeviceReady';
@@ -19,26 +18,9 @@ export class DeviceLinkService {
   }
 
   protected async _recv(): Promise<any[]> {
-    const lenBuf = await this._readExactly(4);
-    const data = await this._readExactly(lenBuf.readUInt32BE(0));
+    const lenBuf = await readExactly(this.socket, 4, 15000);
+    const data = await readExactly(this.socket, lenBuf.readUInt32BE(0), 15000);
     return plist.parse(data.toString('utf8')) as any[];
-  }
-
-  protected _readExactly(size: number): Promise<Buffer> {
-    const sock = this.socket;
-    const chunks: Buffer[] = [];
-    let received = 0;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => cleanup(new Error('timeout')), 15000);
-      const tryRead = () => {
-        while (received < size) { const c = sock.read(size - received) as Buffer | null; if (!c) break; chunks.push(c); received += c.length; }
-        if (received >= size) { clearTimeout(timer); sock.removeListener('readable', tryRead); sock.removeListener('error', onErr); sock.removeListener('close', onClose); resolve(Buffer.concat(chunks).subarray(0, size)); }
-      };
-      const onErr = (e: Error) => cleanup(e);
-      const onClose = () => cleanup(new Error('closed'));
-      const cleanup = (e: Error) => { clearTimeout(timer); sock.removeListener('readable', tryRead); sock.removeListener('error', onErr); sock.removeListener('close', onClose); reject(e); };
-      sock.on('readable', tryRead); sock.once('error', onErr); sock.once('close', onClose); tryRead();
-    });
   }
 
   async versionExchange(localMajor: number, localMinor: number): Promise<[number, number]> {

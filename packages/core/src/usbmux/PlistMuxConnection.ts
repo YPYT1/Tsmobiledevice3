@@ -117,7 +117,7 @@ export class PlistMuxConnection extends UsbMuxConnection {
     }
 
     if (response.Number !== 0) {
-      this.raiseMuxException(response.Number, `Error: ${response.MessageType}`);
+      this.raiseMuxException(response.Number, `usbmuxd error ${response.Number}`);
     }
   }
 

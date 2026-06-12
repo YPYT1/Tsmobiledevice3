@@ -1,5 +1,13 @@
 import { DvtServiceProvider, DtxChannel } from '../../dtx/provider';
 
+export interface ProcessInfo {
+  pid: number;
+  name: string;
+  bundleIdentifier?: string;
+  isApplication?: boolean;
+  realAppName?: string;
+}
+
 export class DeviceInfoService {
   static readonly IDENTIFIER = 'com.apple.instruments.server.services.deviceinfo';
   constructor(private ch: DtxChannel) {}
@@ -8,7 +16,7 @@ export class DeviceInfoService {
     return await this.ch.invoke('directoryListingForPath:', [path]) ?? [];
   }
 
-  async proclist(): Promise<any[]> {
+  async proclist(): Promise<ProcessInfo[]> {
     return await this.ch.invoke('runningProcesses') ?? [];
   }
 

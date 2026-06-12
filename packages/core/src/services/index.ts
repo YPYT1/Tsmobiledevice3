@@ -28,7 +28,6 @@ export * from './RestoreService';
 export * from './DtFetchSymbolsService';
 export * from './RemoteFetchSymbolsService';
 export * from './MobileActivationService';
-export * from './MisagentService';
 export * from './PreboardService';
 export * from './PowerAssertionService';
 export * from './AccessibilityAuditService';

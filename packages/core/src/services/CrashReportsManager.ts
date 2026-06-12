@@ -9,7 +9,7 @@ export class CrashReportsManager extends AfcService {
   async listCrashReports(): Promise<string[]> {
     const entries: string[] = [];
     for await (const { path, isDir } of this.walk('/')) {
-      if (!isDir && path.endsWith('.ips') || path.endsWith('.crash')) {
+      if (!isDir && (path.endsWith('.ips') || path.endsWith('.crash'))) {
         entries.push(path);
       }
     }

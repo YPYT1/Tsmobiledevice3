@@ -40,9 +40,9 @@ export class RemoteServiceDiscovery {
     const port = this.getServicePort(name);
     const socket = await new Promise<net.Socket>((resolve, reject) => {
       const s = net.createConnection(port, this.host);
-      s.once('connect', () => resolve(s));
-      s.once('error', reject);
-      setTimeout(() => reject(new Error('RSD service connect timeout')), 10000);
+      const timer = setTimeout(() => { s.destroy(); reject(new Error('RSD service connect timeout')); }, 10000);
+      s.once('connect', () => { clearTimeout(timer); resolve(s); });
+      s.once('error', (e) => { clearTimeout(timer); reject(e); });
     });
     await this._rsdCheckin(socket);
     return socket;
@@ -84,7 +84,7 @@ export class RemoteServiceDiscovery {
           resolve(plist.parse(buf.subarray(4, needed).toString('utf8')) as Record<string, any>);
         }
       };
-      const onErr = (e: Error) => reject(e);
+      const onErr = (e: Error) => { socket.removeListener('data', onData); reject(e); };
       socket.on('data', onData);
       socket.once('error', onErr);
     });

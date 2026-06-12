@@ -30,12 +30,16 @@ export class RemoteXPCConnection extends EventEmitter {
   async connect(): Promise<void> {
     this.socket = await new Promise<net.Socket>((resolve, reject) => {
       const s = net.createConnection(this.port, this.host);
-      s.once('connect', () => resolve(s));
-      s.once('error', reject);
-      setTimeout(() => reject(new Error('RSD connect timeout')), 10000);
+      const timer = setTimeout(() => { s.destroy(); reject(new Error('RSD connect timeout')); }, 10000);
+      s.once('connect', () => { clearTimeout(timer); resolve(s); });
+      s.once('error', (e) => { clearTimeout(timer); reject(e); });
     });
     this.socket.on('data', (chunk: Buffer) => this._onData(chunk));
-    this.socket.on('error', () => this.socket?.destroy());
+    this.socket.on('error', (e) => { this.emit('error', e); this.socket?.destroy(); });
+    this.socket.on('close', () => {
+      for (const w of this.waiters) w({});
+      this.waiters = [];
+    });
     await this._handshake();
     this.peerInfo = await this.receiveResponse();
   }
@@ -129,8 +133,9 @@ export class RemoteXPCConnection extends EventEmitter {
   }
 
   close(): void {
+    for (const w of this.waiters) w({});
+    this.waiters = [];
     this.socket?.destroy();
-    this.socket?.unref();
     this.socket = null;
   }
 }

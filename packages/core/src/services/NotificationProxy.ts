@@ -1,5 +1,6 @@
 import net from 'net';
 import plist from 'plist';
+import { readExactly } from '../utils/socket';
 
 export class NotificationProxy {
   private socket: net.Socket;
@@ -18,38 +19,9 @@ export class NotificationProxy {
     );
   }
 
-  private _readExactly(size: number): Promise<Buffer> {
-    const sock = this.socket;
-    const chunks: Buffer[] = [];
-    let received = 0;
-    return new Promise((resolve, reject) => {
-      const tryRead = () => {
-        while (received < size) {
-          const chunk = sock.read(size - received) as Buffer | null;
-          if (!chunk) break;
-          chunks.push(chunk);
-          received += chunk.length;
-        }
-        if (received >= size) {
-          sock.removeListener('readable', tryRead);
-          sock.removeListener('error', onError);
-          sock.removeListener('close', onClose);
-          resolve(Buffer.concat(chunks).subarray(0, size));
-        }
-      };
-      const onError = (e: Error) => { sock.removeListener('readable', tryRead); sock.removeListener('close', onClose); reject(e); };
-      const onClose = () => { sock.removeListener('readable', tryRead); sock.removeListener('error', onError); reject(new Error('Socket closed')); };
-      sock.on('readable', tryRead);
-      sock.once('error', onError);
-      sock.once('close', onClose);
-      tryRead();
-    });
-  }
-
   private async _recv(): Promise<any> {
-    const lenBuf = await this._readExactly(4);
-    const size = lenBuf.readUInt32BE(0);
-    const payload = await this._readExactly(size);
+    const lenBuf = await readExactly(this.socket, 4);
+    const payload = await readExactly(this.socket, lenBuf.readUInt32BE(0));
     return plist.parse(payload.toString('utf8'));
   }
 
@@ -61,9 +33,10 @@ export class NotificationProxy {
     await this._send({ Command: 'ObserveNotification', Name: name });
   }
 
-  async *notifications(): AsyncGenerator<string> {
-    while (true) {
+  async *notifications(signal?: AbortSignal): AsyncGenerator<string> {
+    while (!signal?.aborted) {
       const msg = await this._recv();
+      if (signal?.aborted) break;
       if (msg && msg.Name) yield msg.Name as string;
     }
   }

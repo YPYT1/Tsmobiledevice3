@@ -91,10 +91,12 @@ export class WebInspectorService {
     // Drain messages for a short window to collect connected apps
     const deadline = Date.now() + 3000;
     while (Date.now() < deadline) {
+      let timer: ReturnType<typeof setTimeout>;
       const msg = await Promise.race([
         this._recv(),
-        new Promise<null>(r => setTimeout(() => r(null), deadline - Date.now())),
+        new Promise<null>(r => { timer = setTimeout(() => r(null), deadline - Date.now()); }),
       ]);
+      clearTimeout(timer!);
       if (!msg) break;
       this._handleMsg(msg);
       // Once we have the application list, request listings immediately
@@ -109,10 +111,12 @@ export class WebInspectorService {
     // Drain listing responses
     const listDeadline = Date.now() + 3000;
     while (Date.now() < listDeadline) {
+      let timer: ReturnType<typeof setTimeout>;
       const msg = await Promise.race([
         this._recv(),
-        new Promise<null>(r => setTimeout(() => r(null), listDeadline - Date.now())),
+        new Promise<null>(r => { timer = setTimeout(() => r(null), listDeadline - Date.now()); }),
       ]);
+      clearTimeout(timer!);
       if (!msg) break;
       this._handleMsg(msg);
     }

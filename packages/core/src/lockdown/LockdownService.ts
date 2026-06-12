@@ -28,6 +28,10 @@ export class LockdownService {
       } catch (e) {
         if (!(e instanceof NotPairedError)) throw e;
       }
+      // BUG-03: inject real SystemBUID from usbmuxd; never use a hardcoded fallback
+      if (pairRecord && !pairRecord.SystemBUID) {
+        pairRecord.SystemBUID = await mux.getBuid();
+      }
       socket = await mux.connectDevice(target.devid, LOCKDOWN_PORT_USBMUX);
       const client = await LockdownClient.create(socket, pairRecord);
       if (pairRecord) await client.validatePairing(pairRecord);

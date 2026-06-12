@@ -35,3 +35,25 @@ describe('DevicePool.broadcast', () => {
     expect(results.find(r => r.udid === 'BBB')?.result).toBe('ok');
   });
 });
+
+describe('DevicePool error handling', () => {
+  // BUG-05: emitting 'error' with no listener must NOT throw
+  it('does not throw when error emitted and no listener attached', () => {
+    const pool = makePool([]);
+    // Emit error directly on internal emitter — simulate the background loop path
+    expect(() => {
+      // If DevicePool has no 'error' listener, EventEmitter throws by default.
+      // Our fix guards with listenerCount before emitting.
+      (pool as any)._emitErrorSafe(new Error('test error'));
+    }).not.toThrow();
+  });
+
+  it('propagates error to listener when registered', () => {
+    const pool = makePool([]);
+    const errors: Error[] = [];
+    pool.on('error', (e) => errors.push(e));
+    (pool as any)._emitErrorSafe(new Error('boom'));
+    expect(errors).toHaveLength(1);
+    expect(errors[0].message).toBe('boom');
+  });
+});
