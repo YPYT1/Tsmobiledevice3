@@ -33,9 +33,16 @@ export class DtxChannel {
     this.waiters = [];
   }
 
-  async recv(): Promise<{ selector?: string; args: any[] }> {
+  async recv(timeoutMs = 30000): Promise<{ selector?: string; args: any[] }> {
     if (this.msgQueue.length > 0) return this.msgQueue.shift()!;
-    return new Promise(resolve => this.waiters.push(resolve));
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const idx = this.waiters.indexOf(resolve);
+        if (idx !== -1) this.waiters.splice(idx, 1);
+        reject(new Error(`DtxChannel.recv timeout after ${timeoutMs}ms`));
+      }, timeoutMs);
+      this.waiters.push((v) => { clearTimeout(timer); resolve(v); });
+    });
   }
 
   async invoke(selector: string, args: any[] = [], expectsReply = true): Promise<any> {

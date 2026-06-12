@@ -1,11 +1,19 @@
 import { DvtServiceProvider } from '../../dtx/provider';
+import { DtxChannel } from '../../dtx/provider';
+
+export interface AppInfo {
+  bundleIdentifier: string;
+  name?: string;
+  version?: string;
+  [key: string]: any;
+}
 
 export class ApplicationListingService {
   static readonly IDENTIFIER = 'com.apple.instruments.server.services.device.applictionListing';
 
-  constructor(private ch: import('../../dtx/provider').DtxChannel) {}
+  constructor(private ch: DtxChannel) {}
 
-  async applist(): Promise<any[]> {
+  async applist(): Promise<AppInfo[]> {
     return await this.ch.invoke('installedApplicationsMatching:registerUpdateToken:', [{}, '']) ?? [];
   }
 

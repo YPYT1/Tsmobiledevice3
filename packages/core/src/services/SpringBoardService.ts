@@ -2,6 +2,7 @@ import net from 'net';
 import plist from 'plist';
 // @ts-ignore
 import bplistParser from 'bplist-parser';
+import { readExactly } from '../utils/socket';
 
 export enum InterfaceOrientation {
   PORTRAIT = 1,
@@ -25,29 +26,12 @@ export class SpringBoardService {
   }
 
   private async _recv(): Promise<Record<string, any>> {
-    const lenBuf = await this._readExactly(4);
-    const data = await this._readExactly(lenBuf.readUInt32BE(0));
-    if (data[0] === 0x62 && data[1] === 0x70) { // 'bp' = bplist
+    const lenBuf = await readExactly(this.socket, 4);
+    const data = await readExactly(this.socket, lenBuf.readUInt32BE(0));
+    if (data[0] === 0x62 && data[1] === 0x70) {
       return (await bplistParser.parseBuffer(data))[0];
     }
     return plist.parse(data.toString('utf8')) as Record<string, any>;
-  }
-
-  private _readExactly(size: number): Promise<Buffer> {
-    const sock = this.socket;
-    const chunks: Buffer[] = [];
-    let received = 0;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => cleanup(new Error('timeout')), 10000);
-      const tryRead = () => {
-        while (received < size) { const c = sock.read(size - received) as Buffer | null; if (!c) break; chunks.push(c); received += c.length; }
-        if (received >= size) { clearTimeout(timer); sock.removeListener('readable', tryRead); sock.removeListener('error', onErr); sock.removeListener('close', onClose); resolve(Buffer.concat(chunks).subarray(0, size)); }
-      };
-      const onErr = (e: Error) => cleanup(e);
-      const onClose = () => cleanup(new Error('closed'));
-      const cleanup = (e: Error) => { clearTimeout(timer); sock.removeListener('readable', tryRead); sock.removeListener('error', onErr); sock.removeListener('close', onClose); reject(e); };
-      sock.on('readable', tryRead); sock.once('error', onErr); sock.once('close', onClose); tryRead();
-    });
   }
 
   async getIconState(formatVersion = '2'): Promise<any[]> {

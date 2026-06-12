@@ -755,9 +755,9 @@ devCmd
       const time = new Date().toTimeString().slice(0, 8);
       const cpu = typeof cpuLoad === 'number' ? cpuLoad.toFixed(1) : '?';
       const used = memUsedBytes ? `${toMB(memUsedBytes)} MB` : 'N/A';
-      const free = memFreeBytes ? `(可用: ${toMB(memFreeBytes)} MB)` : '';
+      const free = memFreeBytes ? `(free: ${toMB(memFreeBytes)} MB)` : '';
 
-      process.stdout.write(`\r[${time}]  CPU: ${cpu}%  内存: ${used}  ${free}    `);
+      process.stdout.write(`\r[${time}]  CPU: ${cpu}%  MEM: ${used}  ${free}    `);
     }
   });
 
@@ -797,6 +797,206 @@ wiCmd
         console.error(`Error: ${error.message}`);
       }
       process.exit(1);
+    } finally {
+      await lockdown.close();
+    }
+  });
+
+// location commands
+const locCmd = program.command('location').description('Location simulation');
+
+locCmd
+  .command('set <lat> <lng>')
+  .description('Simulate device location')
+  .option('-u, --udid <udid>', 'Target device UDID')
+  .action(async (lat, lng, options) => {
+    const { lockdown, factory } = await getService(options.udid).catch((e) => {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    });
+    try {
+      const svc = await factory.simulateLocation();
+      try {
+        await svc.setLocation(parseFloat(lat), parseFloat(lng));
+        console.log(`Location set: ${lat}, ${lng}`);
+      } finally {
+        await svc.close();
+      }
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    } finally {
+      await lockdown.close();
+    }
+  });
+
+locCmd
+  .command('reset')
+  .description('Reset simulated location')
+  .option('-u, --udid <udid>', 'Target device UDID')
+  .action(async (options) => {
+    const { lockdown, factory } = await getService(options.udid).catch((e) => {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    });
+    try {
+      const svc = await factory.simulateLocation();
+      try {
+        await svc.resetLocation();
+        console.log('Location reset.');
+      } finally {
+        await svc.close();
+      }
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    } finally {
+      await lockdown.close();
+    }
+  });
+
+// crash commands
+const crashCmd = program.command('crash').description('Crash reports management');
+
+crashCmd
+  .command('list')
+  .description('List crash reports on device')
+  .option('-u, --udid <udid>', 'Target device UDID')
+  .action(async (options) => {
+    const { lockdown, factory } = await getService(options.udid).catch((e) => {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    });
+    try {
+      const svc = await factory.crashReports();
+      try {
+        const reports = await svc.listCrashReports();
+        if (!reports.length) { console.log('No crash reports.'); return; }
+        for (const r of reports) console.log(`  ${r}`);
+      } finally {
+        await svc.close();
+      }
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    } finally {
+      await lockdown.close();
+    }
+  });
+
+crashCmd
+  .command('pull <remote> <local>')
+  .description('Download a crash report')
+  .option('-u, --udid <udid>', 'Target device UDID')
+  .action(async (remote, local, options) => {
+    const { lockdown, factory } = await getService(options.udid).catch((e) => {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    });
+    try {
+      const svc = await factory.crashReports();
+      try {
+        const data = await svc.getCrashReport(remote);
+        fs.writeFileSync(local, data);
+        console.log(`Saved: ${local} (${data.length} bytes)`);
+      } finally {
+        await svc.close();
+      }
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    } finally {
+      await lockdown.close();
+    }
+  });
+
+crashCmd
+  .command('delete <remote>')
+  .description('Delete a crash report on device')
+  .option('-u, --udid <udid>', 'Target device UDID')
+  .action(async (remote, options) => {
+    const { lockdown, factory } = await getService(options.udid).catch((e) => {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    });
+    try {
+      const svc = await factory.crashReports();
+      try {
+        await svc.deleteCrashReport(remote);
+        console.log(`Deleted: ${remote}`);
+      } finally {
+        await svc.close();
+      }
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    } finally {
+      await lockdown.close();
+    }
+  });
+
+// springboard commands
+const sbCmd = program.command('springboard').description('SpringBoard operations');
+
+sbCmd
+  .command('icon <bundleId> [output]')
+  .description('Get app icon PNG')
+  .option('-u, --udid <udid>', 'Target device UDID')
+  .action(async (bundleId, output, options) => {
+    const { lockdown, factory } = await getService(options.udid).catch((e) => {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    });
+    try {
+      const svc = await factory.springBoard();
+      try {
+        const data = await svc.getIconPngData(bundleId);
+        const dest = output ?? `${bundleId}.png`;
+        fs.writeFileSync(dest, data);
+        console.log(`Icon saved: ${dest} (${data.length} bytes)`);
+      } finally {
+        await svc.close();
+      }
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    } finally {
+      await lockdown.close();
+    }
+  });
+
+sbCmd
+  .command('wallpaper [output]')
+  .description('Get home screen wallpaper PNG')
+  .option('-u, --udid <udid>', 'Target device UDID')
+  .action(async (output, options) => {
+    const { lockdown, factory } = await getService(options.udid).catch((e) => {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    });
+    try {
+      const svc = await factory.springBoard();
+      try {
+        const data = await svc.getWallpaperPngData();
+        const dest = output ?? 'wallpaper.png';
+        fs.writeFileSync(dest, data);
+        console.log(`Wallpaper saved: ${dest} (${data.length} bytes)`);
+      } finally {
+        await svc.close();
+      }
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    } finally {
+      await lockdown.close();
+    }
+  });
+
+sbCmd
+  .command('orientation')
+  .description('Get current interface orientation')
+  .option('-u, --udid <udid>', 'Target device UDID')
+  .action(async (options) => {
+    const { lockdown, factory } = await getService(options.udid).catch((e) => {
+      console.error(`Error: ${e.message}`); process.exit(1);
+    });
+    try {
+      const svc = await factory.springBoard();
+      try {
+        const o = await svc.getInterfaceOrientation();
+        const labels: Record<number, string> = { 1: 'Portrait', 2: 'Portrait (upside down)', 3: 'Landscape (home right)', 4: 'Landscape (home left)' };
+        console.log(`Orientation: ${labels[o] ?? o}`);
+      } finally {
+        await svc.close();
+      }
+    } catch (e: any) {
+      console.error(`Error: ${e.message}`); process.exit(1);
     } finally {
       await lockdown.close();
     }
