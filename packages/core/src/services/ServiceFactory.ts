@@ -23,6 +23,7 @@ import { WebInspectorService } from './WebInspectorService';
 import { MobileConfigService } from './MobileConfigService';
 import { MisagentService } from './MisagentService';
 import { AmfiService } from './AmfiService';
+import { DvtFactory } from '../dtx/DvtFactory';
 
 async function openServiceSocket(
   lockdown: LockdownService,
@@ -135,5 +136,9 @@ export class ServiceFactory {
 
   async amfi(): Promise<AmfiService> {
     return new AmfiService(await this.socket('com.apple.amfi.lockdown'));
+  }
+
+  async dvt(): Promise<DvtFactory> {
+    return DvtFactory.create(this.lockdown, this.usbmuxAddress);
   }
 }
