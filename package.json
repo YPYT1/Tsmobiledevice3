@@ -14,7 +14,7 @@
     "test:layer3": "lerna run test:layer3 --scope=@ts-mobiledevice/core",
     "lint": "lerna run lint",
     "clean": "lerna clean && lerna run clean",
-    "prepare": "husky install"
+    "prepare": "node -e \"if (!process.env.CI) require('child_process').execSync('husky install', {stdio: 'inherit'})\""
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
