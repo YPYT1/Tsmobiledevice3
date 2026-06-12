@@ -9,6 +9,8 @@
 
 ## 为什么选择 tsmobiledevice？
 
+> **完整对比文档 →** [docs/comparison-with-pymobiledevice3.md](./docs/comparison-with-pymobiledevice3.md)
+
 | | pymobiledevice3 | tsmobiledevice |
 |---|---|---|
 | 运行时 | Python 3 | Node.js ≥ 18 |
@@ -18,6 +20,15 @@
 | 并行广播 | ❌ | ✅ `pool.broadcast()` |
 | npm 包 | ❌ | ✅ `@tsmobiledevice/core` |
 | 协议覆盖 | 5 层 | 5 层 ✅ |
+
+**性能基准**（iPhone 14 Pro / iOS 16.7 / USB / Windows 11）：
+
+| 操作 | pymobiledevice3 | tsmobiledevice |
+|------|-----------------|----------------|
+| Lockdown 连接 | 95 ms | **81 ms**（快 15%）|
+| AFC listdir `/` | 6 ms | **5 ms**（快 17%）|
+| 截图 | 1967 ms | 2065 ms（USB 瓶颈，基本持平）|
+| 2 台设备并行截图 | ~4100 ms | **~2100 ms**（pool.broadcast）|
 
 ## 协议覆盖
 

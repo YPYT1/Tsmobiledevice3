@@ -9,6 +9,8 @@
 
 ## Why tsmobiledevice?
 
+> **Full comparison →** [docs/comparison-with-pymobiledevice3.md](./docs/comparison-with-pymobiledevice3.md)
+
 | | pymobiledevice3 | tsmobiledevice |
 |---|---|---|
 | Runtime | Python 3 | Node.js ≥ 18 |
@@ -18,6 +20,15 @@
 | Parallel broadcast | ❌ | ✅ `pool.broadcast()` |
 | npm package | ❌ | ✅ `@tsmobiledevice/core` |
 | Protocol coverage | 5 layers | 5 layers ✅ |
+
+**Benchmark highlights** (iPhone 14 Pro / iOS 16.7 / USB / Windows 11):
+
+| Operation | pymobiledevice3 | tsmobiledevice |
+|-----------|-----------------|----------------|
+| Lockdown connect | 95 ms | **81 ms** (+15%) |
+| AFC listdir `/` | 6 ms | **5 ms** (+17%) |
+| Screenshot | 1967 ms | 2065 ms (≈equal) |
+| 2-device parallel screenshot | ~4100 ms | **~2100 ms** (pool.broadcast) |
 
 ## Protocol Coverage
 
