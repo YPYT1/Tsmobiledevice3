@@ -1,6 +1,8 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { DevicesService } from '../devices/devices.service';
 
+@ApiTags('devices')
 @Controller('devices')
 export class AppsController {
   constructor(private readonly devicesService: DevicesService) {}

@@ -8,12 +8,16 @@
   ],
   "scripts": {
     "build": "lerna run build",
+    "build:core": "pnpm --filter @tsmobiledevice/core build",
+    "build:server": "pnpm --filter @tsmobiledevice/server build",
     "test": "lerna run test",
-    "test:layer1": "lerna run test:layer1 --scope=@ts-mobiledevice/core",
-    "test:layer2": "lerna run test:layer2 --scope=@ts-mobiledevice/core",
-    "test:layer3": "lerna run test:layer3 --scope=@ts-mobiledevice/core",
     "lint": "lerna run lint",
     "clean": "lerna clean && lerna run clean",
+    "dev": "concurrently -n server,web -c blue,green \"pnpm --filter @tsmobiledevice/server dev\" \"pnpm --filter @tsmobiledevice/web dev\"",
+    "dev:server": "pnpm --filter @tsmobiledevice/server dev",
+    "dev:web": "pnpm --filter @tsmobiledevice/web dev",
+    "start": "concurrently -n server,web -c blue,green \"pnpm --filter @tsmobiledevice/server start\" \"pnpm --filter @tsmobiledevice/web preview\"",
+    "start:server": "pnpm --filter @tsmobiledevice/server start",
     "prepare": "node -e \"if (!process.env.CI) require('child_process').execSync('husky install', {stdio: 'inherit'})\""
   },
   "devDependencies": {
@@ -21,6 +25,7 @@
     "@types/node": "^20.11.16",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
+    "concurrently": "^8.2.2",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.1.3",
