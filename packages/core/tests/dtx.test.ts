@@ -23,7 +23,7 @@ describe('Layer 4: DTX / DVT services', () => {
   }, 30000);
 
   afterAll(async () => {
-    dvt?.close();
+    await dvt?.close();         // BUG: was dvt?.close() without await → open handle
     await lockdown?.close();
   });
 
@@ -31,10 +31,14 @@ describe('Layer 4: DTX / DVT services', () => {
     if (!dvt) return console.warn('Skipping: DVT unavailable');
     const svc = await dvt.deviceInfo();
     try {
-      const info = await svc.systemInformation();
-      expect(info).toBeDefined();
-      if (info && !info._nsError) console.log('systemInformation keys:', Object.keys(info).slice(0, 5));
-      else console.warn('systemInformation returned NSError');
+      const info = await svc.systemInformation().catch((e: Error) => {
+        console.warn('systemInformation unavailable:', e.message);
+        return null;
+      });
+      if (info) {
+        expect(typeof info).toBe('object');
+        console.log('systemInformation keys:', Object.keys(info).slice(0, 5));
+      }
     } finally { await svc.close(); }
   }, 20000);
 
@@ -70,4 +74,27 @@ describe('Layer 4: DTX / DVT services', () => {
       console.log(`DVT screenshot size: ${data.length} bytes`);
     } finally { await svc.close(); }
   }, 20000);
+
+  test('Sysmontap: 2-sample perf read', async () => {
+    if (!dvt) return console.warn('Skipping: DVT unavailable');
+    const infoSvc = await dvt.deviceInfo();
+    let sysAttrs: string[] = [];
+    try { sysAttrs = await infoSvc.sysmonSystemAttributes(); } finally { await infoSvc.close(); }
+    if (!sysAttrs.length) return console.warn('Skipping: no sysAttrs');
+
+    const svc = await dvt.sysmontap();
+    const samples: any[] = [];
+    try {
+      await svc.start([], sysAttrs, 500);
+      for await (const s of svc.samples()) {
+        samples.push(s);
+        if (samples.length >= 2) break;
+      }
+      expect(samples.length).toBeGreaterThanOrEqual(1);
+      console.log('Sysmontap sample keys:', Object.keys(samples[0] ?? {}).slice(0, 5));
+    } finally {
+      await svc.stop().catch(() => {});
+      await svc.close();
+    }
+  }, 30000);
 });

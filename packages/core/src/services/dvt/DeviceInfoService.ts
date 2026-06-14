@@ -25,7 +25,10 @@ export class DeviceInfoService {
   }
 
   async systemInformation(): Promise<Record<string, any>> {
-    return await this.ch.invoke('systemInformation') ?? {};
+    const r = await this.ch.invoke('systemInformation') ?? {};
+    // Device returns NSError when DDI not mounted or permission denied; surface it clearly
+    if (r && r._nsError) throw new Error(`systemInformation failed: ${r.domain ?? 'NSError'} code=${r.code ?? 'unknown'}`);
+    return r;
   }
 
   async hardwareInformation(): Promise<Record<string, any>> {
