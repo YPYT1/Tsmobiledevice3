@@ -100,24 +100,16 @@ lockdownCmd
 
 lockdownCmd
   .command('pair')
-  .description('Pair with device')
+  .description('Pair with device (generates host certificate + saves pair record)')
   .option('-u, --udid <udid>', 'Target device UDID')
   .action(async (options) => {
-    const { lockdown } = await getService(options.udid).catch((e) => {
-      console.error(`Error: ${e.message}`);
-      process.exit(1);
-    });
     try {
-      if (lockdown.client.pairRecord) {
-        console.log('Device is already paired.');
-      } else {
-        console.log('Device is not paired. Please trust this computer on the device.');
-      }
-    } catch (error: any) {
-      console.error(`Error: ${error.message}`);
+      console.log('Starting pairing… Accept the trust dialog on your device.');
+      await LockdownService.pair(options.udid);
+      console.log('Paired successfully.');
+    } catch (e: any) {
+      console.error(`Pairing failed: ${e.message}`);
       process.exit(1);
-    } finally {
-      await lockdown.close();
     }
   });
 
