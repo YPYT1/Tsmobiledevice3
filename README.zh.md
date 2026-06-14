@@ -1,130 +1,206 @@
-# tsmobiledevice
+<div align="center">
 
-[English](./README.md) | **中文**
+# ts-mobiledevice
 
-第四代 TypeScript iOS 设备通信库 —— [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) 的完整 Node.js 重写版，内置多设备连接池、热插拔事件和完整 CLI 工具。
+**专业级 TypeScript iOS 设备通信 SDK**
 
-[![npm](https://img.shields.io/npm/v/@tsmobiledevice/core)](https://www.npmjs.com/package/@tsmobiledevice/core)
-[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+[![npm](https://img.shields.io/npm/v/@tsmobiledevice/core?style=flat-square&color=0070f3)](https://www.npmjs.com/package/@tsmobiledevice/core)
+[![CI](https://img.shields.io/github/actions/workflow/status/YPYT1/Tsmobiledevice3/ci.yml?style=flat-square&label=CI)](https://github.com/YPYT1/Tsmobiledevice3/actions)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.7-3178c6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 
-## 为什么选择 tsmobiledevice？
+[English](./README.md) | **中文简体** | [中文繁體](./README.zh-TW.md) | [日本語](./README.ja.md) | [한국어](./README.ko.md) | [Español](./README.es.md) | [Français](./README.fr.md) | [Deutsch](./README.de.md) | [Português](./README.pt.md) | [Русский](./README.ru.md)
 
-> **完整对比文档 →** [docs/comparison-with-pymobiledevice3.md](./docs/comparison-with-pymobiledevice3.md)
+</div>
 
-| | pymobiledevice3 | tsmobiledevice |
-|---|---|---|
+---
+
+## 简介
+
+为 Node.js 生态系统完整重写 [pymobiledevice3](https://github.com/doronz88/pymobiledevice3)，生产就绪，提供完整的 TypeScript 类型支持。无需 Python 依赖，直接访问所有 iOS 通信协议。
+
+| 特性 | pymobiledevice3 | **ts-mobiledevice** |
+|------|----------------|---------------------|
 | 运行时 | Python 3 | Node.js ≥ 18 |
 | 类型安全 | ❌ | ✅ 完整 TypeScript |
 | 多设备连接池 | ❌ | ✅ `DevicePool` |
-| 热插拔事件 | ❌ | ✅ `device:connected / disconnected` |
+| 热插拔事件 | ❌ | ✅ EventEmitter |
 | 并行广播 | ❌ | ✅ `pool.broadcast()` |
-| npm 包 | ❌ | ✅ `@tsmobiledevice/core` |
-| 协议覆盖 | 5 层 | 5 层 ✅ |
+| REST API 服务器 | ❌ | ✅ NestJS |
+| Web 管理界面 | ❌ | ✅ React |
+| Wi-Fi 设备发现 | ❌ | ✅ Bonjour mDNS |
+| 流式取消 | ❌ | ✅ AbortSignal |
 
-**性能基准**（iPhone 14 Pro / iOS 16.7 / USB / Windows 11）：
+---
 
-| 操作 | pymobiledevice3 | tsmobiledevice |
-|------|-----------------|----------------|
-| Lockdown 连接 | 95 ms | **81 ms**（快 15%）|
-| AFC listdir `/` | 6 ms | **5 ms**（快 17%）|
-| 截图 | 1967 ms | 2065 ms（USB 瓶颈，基本持平）|
-| 2 台设备并行截图 | ~4100 ms | **~2100 ms**（pool.broadcast）|
+## 架构
 
-## 协议覆盖
-
-| 层级 | 协议 | 状态 |
-|------|------|------|
-| 1 | usbmux — 设备发现与 TCP 端口转发 | ✅ |
-| 2 | lockdown — 配对、TLS 会话、服务代理 | ✅ |
-| 3 | 30+ 服务 — AFC、诊断、syslog、截图… | ✅ |
-| 4 | DTX — Instruments / DVT 二进制协议 | ✅ |
-| 5 | RemoteXPC / RSD — iOS 17+ 隧道服务发现 | ✅ |
-
-## CLI 快速上手
-
-```bash
-npm install -g @tsmobiledevice/cli
-
-tsmobiledevice usbmux list           # 列出已连接设备
-tsmobiledevice lockdown info         # 显示设备信息
-tsmobiledevice afc ls /              # 浏览设备文件系统
-tsmobiledevice apps list             # 列出已安装应用
-tsmobiledevice syslog live           # 实时系统日志
-tsmobiledevice developer screenshot  # 截图
-tsmobiledevice pool devices          # 所有设备 + 连接类型
-tsmobiledevice pool watch            # 热插拔事件监听
-tsmobiledevice pool screenshot       # 并行截图所有设备
+```
+┌─────────────────────────────────────────────────────┐
+│                   ts-mobiledevice                   │
+├───────────────┬──────────────────┬──────────────────┤
+│  @core 协议库  │  @server NestJS  │  @web React 界面  │
+├───────────────┴──────────────────┴──────────────────┤
+│              @cli  tsmobiledevice 命令行             │
+├─────────────────────────────────────────────────────┤
+│  第5层 │ RemoteXPC / RSD (iOS 17+)                  │
+│  第4层 │ DTX / DVT — Instruments 二进制协议           │
+│  第3层 │ 30+ 服务（AFC · 诊断 · Syslog · DVT …）     │
+│  第2层 │ Lockdown — 配对 · TLS · 服务代理             │
+│  第1层 │ usbmux + Bonjour mDNS                       │
+└─────────────────────────────────────────────────────┘
+                      ↕ USB / Wi-Fi
+                   iOS 设备（iPhone/iPad）
 ```
 
-## 库使用示例
+---
+
+## 快速开始
+
+### 安装
 
 ```bash
 npm install @tsmobiledevice/core
 ```
 
 ```typescript
-import { DevicePool } from '@tsmobiledevice/core';
+import { LockdownService, ServiceFactory, DevicePool } from '@tsmobiledevice/core';
 
-const pool = await DevicePool.connect();
+// 单设备
+const lockdown = await LockdownService.create();
+const factory = new ServiceFactory(lockdown);
 
-pool.on('device:connected', (device) => {
-  console.log('新设备:', device.udid);
-});
+const afc = await factory.afc();
+const files = await afc.listdir('/');
+console.log(files);
+await afc.close();
+await lockdown.close();
 
-// 一次性截图所有连接设备
+// 多设备并行截图
+const pool = await DevicePool.connect({ enableBonjour: true });
+pool.on('device:connected', d => console.log('[+]', d.serial));
+
 const results = await pool.broadcast(async (device) => {
-  return await device.screenshot();
+  const lock = await LockdownService.create(device.serial);
+  const fac = new ServiceFactory(lock);
+  const svc = await fac.screenshot();
+  const png = await svc.takeScreenshot();
+  await svc.close(); await lock.close();
+  return png;
 });
 
-pool.close();
+await pool.close();
 ```
 
-## CLI 命令
+### CLI
 
+```bash
+npm install -g @tsmobiledevice/cli
+
+tsmobiledevice usbmux list              # 列出连接的设备
+tsmobiledevice lockdown info            # 显示设备信息
+tsmobiledevice lockdown pair            # 配对设备
+tsmobiledevice afc ls /                 # 浏览设备文件系统
+tsmobiledevice afc pull <远程> <本地>   # 下载文件
+tsmobiledevice afc push <本地> <远程>   # 上传文件
+tsmobiledevice apps list                # 列出应用
+tsmobiledevice apps install <ipa>       # 安装 IPA
+tsmobiledevice syslog live --pid <pid>  # 实时日志（按PID过滤）
+tsmobiledevice developer screenshot     # 截图
+tsmobiledevice developer perf --pid <p> # 进程性能监控
+tsmobiledevice developer energy --pid <p> # 能耗监控
+tsmobiledevice developer network        # 网络监控
+tsmobiledevice developer graphics       # GPU/FPS 监控
+tsmobiledevice location set <lat> <lng> # 设置 GPS 位置
+tsmobiledevice location reset           # 重置 GPS
+tsmobiledevice crash list               # 崩溃日志列表
+tsmobiledevice crash pull <远程> <本地> # 下载崩溃日志
+tsmobiledevice springboard icon <id>    # 获取应用图标
+tsmobiledevice condition list           # 网络条件列表
+tsmobiledevice condition set <id>       # 启用弱网模拟
+tsmobiledevice profile list             # 描述文件列表
+tsmobiledevice pool devices             # 所有设备状态
+tsmobiledevice pool screenshot -o <dir> # 并行截图所有设备
+tsmobiledevice pool watch               # 热插拔事件监控
+tsmobiledevice webinspector list        # Safari 页面列表
+tsmobiledevice diag battery             # 电池信息
 ```
-usbmux:
-  tsmobiledevice usbmux list            列出连接设备
-  tsmobiledevice usbmux listen          实时监听插拔事件
 
-lockdown:
-  tsmobiledevice lockdown info          设备信息
-  tsmobiledevice lockdown pair          配对状态
+---
 
-afc:
-  tsmobiledevice afc ls <路径>          列出目录
-  tsmobiledevice afc pull <远端> <本地> 下载文件/目录
-  tsmobiledevice afc push <本地> <远端> 上传文件/目录
-  tsmobiledevice afc shell              交互式 AFC Shell
+## REST API 服务器
 
-apps:
-  tsmobiledevice apps list              列出用户应用
-  tsmobiledevice apps install <ipa>     安装 IPA
-  tsmobiledevice apps uninstall <id>    卸载应用
+```bash
+git clone https://github.com/YPYT1/Tsmobiledevice3.git && cd Tsmobiledevice3
+pnpm install && pnpm build:core
 
-syslog:
-  tsmobiledevice syslog live            实时日志流（--match <正则>）
+cp packages/server/.env.example packages/server/.env
+# 编辑 .env，设置 API_KEY=your-secret（可选）
 
-developer:  （需要 DDI，自动挂载）
-  tsmobiledevice developer screenshot   截图（--all 全部设备并行）
-  tsmobiledevice developer processes    进程列表（--all）
-  tsmobiledevice developer perf         CPU/内存实时监控
-
-pool:  （第4代多设备 API）
-  tsmobiledevice pool devices           列出所有设备
-  tsmobiledevice pool screenshot        并行截图所有设备
-  tsmobiledevice pool watch             热插拔事件监听
-
-webinspector:
-  tsmobiledevice webinspector list      列出 Safari 页面
-  tsmobiledevice webinspector open      在 Safari 打开 URL
+pnpm dev:server   # http://localhost:3000/api
+# 文档：http://localhost:3000/docs
 ```
+
+| 接口 | 方法 | 描述 |
+|------|------|------|
+| `/api/devices` | GET | 设备列表 |
+| `/api/devices/:udid` | GET | 设备详情 |
+| `/api/devices/:udid/screenshot` | GET | 截图 PNG |
+| `/api/devices/:udid/apps?type=User\|System\|Any` | GET | 应用列表 |
+| `/api/devices/:udid/battery` | GET | 电池信息 |
+| `/api/devices/:udid/crashes` | GET | 崩溃报告列表 |
+| `/api/devices/:udid/location` | POST/DELETE | GPS 模拟 |
+| `/api/events` | SSE | 设备连接/断开事件 |
+| `/api/health` | GET | 健康检查 |
+| `/docs` | GET | Redocly API 文档 |
+
+**WebSocket（socket.io）：**
+
+```js
+const socket = io('http://localhost:3000');
+socket.emit('subscribe:logs', '<udid>');
+socket.on('log:line', line => console.log(line));
+
+socket.emit('subscribe:perf', '<udid>');
+socket.on('perf:sample', sample => console.log(sample));
+```
+
+---
+
+## Web 管理界面
+
+```bash
+pnpm dev   # 同时启动服务器和 Web
+# 访问 http://localhost:5173
+```
+
+功能：设备列表 · 实时截图 · 应用浏览 · 实时日志流 · CPU/内存折线图 · GPS 设置 · 崩溃报告管理。
+
+---
+
+## 性能基准
+
+> **测试设备：** iPhone 14 Pro · iOS 16.7.16 · USB · Windows 11 Pro
+
+| 操作 | pymobiledevice3 | ts-mobiledevice | 差值 |
+|------|-----------------|-----------------|------|
+| Lockdown 连接 | 95 ms | **81 ms** | +15% |
+| AFC `listdir /` | 6 ms | **5 ms** | +17% |
+| 截图 | 1,967 ms | 2,065 ms | ≈ 相当 |
+| 2 台设备并行截图 | ~4,100 ms | **~2,100 ms** | **+95%** |
+
+---
 
 ## 环境要求
 
-- Node.js ≥ 18
-- **Windows**：已安装 iTunes（提供 `127.0.0.1:27015` 上的 AMDS）
-- **macOS / Linux**：usbmuxd 正在运行
-- iOS 设备通过 USB 连接（已信任）
+| 平台 | 要求 |
+|------|------|
+| 全平台 | Node.js ≥ 18 |
+| Windows | iTunes（提供 AMDS，`127.0.0.1:27015`） |
+| macOS / Linux | `usbmuxd` 已运行 |
+| iOS 设备 | USB 可信连接 或 Wi-Fi（Bonjour 发现） |
+
+---
 
 ## 从源码构建
 
@@ -132,21 +208,25 @@ webinspector:
 git clone https://github.com/YPYT1/Tsmobiledevice3.git
 cd Tsmobiledevice3
 pnpm install
-pnpm run build
+pnpm build:core && pnpm build:server
+pnpm test   # 65 个测试，无需真机
 ```
 
-## 项目结构
+---
 
-```
-packages/
-├── core/   @tsmobiledevice/core — 协议库（npm 包）
-└── cli/    @tsmobiledevice/cli  — CLI 工具（tsmobiledevice 命令）
-```
+## 贡献指南
+
+1. Fork 本仓库并创建功能分支
+2. 在对应的 `__tests__/` 或 `tests/` 目录下编写测试
+3. 确保全部测试通过：`pnpm test`
+4. 提交 Pull Request
+
+---
 
 ## 致谢
 
-协议研究与原始实现：[pymobiledevice3](https://github.com/doronz88/pymobiledevice3)，作者 [@doronz88](https://github.com/doronz88)。
+协议研究参考：[@doronz88](https://github.com/doronz88) 的 [pymobiledevice3](https://github.com/doronz88/pymobiledevice3)。
 
 ## 许可证
 
-GPL-3.0-or-later
+[GPL-3.0-or-later](LICENSE) © 2024–2026 YPYT1
