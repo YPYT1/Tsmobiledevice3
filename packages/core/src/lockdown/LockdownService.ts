@@ -42,6 +42,32 @@ export class LockdownService {
     }
   }
 
+  /** Perform lockdown pairing for a device (no existing pair record needed). */
+  static async pair(udid?: string, usbmuxAddress?: string): Promise<void> {
+    const mux = (await UsbMuxConnection.create(usbmuxAddress)) as PlistMuxConnection;
+    let socket: net.Socket | undefined;
+    try {
+      const rawDevices = await mux.listDevices();
+      const target = udid
+        ? rawDevices.find(d => d.serial.replace(/-/g, '') === udid.replace(/-/g, ''))
+        : rawDevices[0];
+      if (!target) throw new Error(udid ? `Device not found: ${udid}` : 'No device connected');
+
+      const systemBuid = await mux.getBuid();
+      socket = await mux.connectDevice(target.devid, LOCKDOWN_PORT_USBMUX);
+      // Create client without pair record — pairing doesn't require one
+      const client = new LockdownClient(socket);
+      await (client as any)._initialize();
+
+      const { pairRecord, pairRecordData } = await client.pair(systemBuid);
+      await mux.savePairRecord(target.serial, target.devid, pairRecordData);
+      client['pairRecord'] = pairRecord;
+    } finally {
+      socket?.destroy();
+      await mux.close();
+    }
+  }
+
   get udid(): string | null { return this.client.udid; }
   get productVersion(): string { return this.client.productVersion; }
   get productType(): string | null { return this.client.productType; }

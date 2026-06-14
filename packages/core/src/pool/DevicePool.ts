@@ -2,15 +2,17 @@ import { EventEmitter } from 'events';
 import { MuxDevice } from '../usbmux/MuxDevice';
 import { PlistMuxConnection } from '../usbmux/PlistMuxConnection';
 import { UsbMuxConnection } from '../usbmux/UsbMuxConnection';
+import { BonjourDiscovery } from '../usbmux/BonjourDiscovery';
 
 export class DevicePool extends EventEmitter {
   private listenConn: PlistMuxConnection | null = null;
+  private bonjour: BonjourDiscovery | null = null;
 
   private constructor(private devices: Map<string, MuxDevice>) {
     super();
   }
 
-  static async connect(usbmuxAddress?: string): Promise<DevicePool> {
+  static async connect(usbmuxAddress?: string, options?: { enableBonjour?: boolean }): Promise<DevicePool> {
     // 1. List current devices
     const listConn = new PlistMuxConnection(
       await UsbMuxConnection.createUsbmuxSocket(usbmuxAddress)
@@ -28,6 +30,20 @@ export class DevicePool extends EventEmitter {
     }
 
     const pool = new DevicePool(devices);
+
+    // Optional: Bonjour Wi-Fi discovery
+    if (options?.enableBonjour) {
+      const bonjour = new BonjourDiscovery();
+      pool.bonjour = bonjour;
+      bonjour.on('device', ({ ip, udid }) => {
+        if (!pool.devices.has(udid)) {
+          const d = new MuxDevice(0, udid, 'Network', ip);
+          pool.devices.set(udid, d);
+          pool.emit('device:connected', d);
+        }
+      });
+      await bonjour.start();
+    }
 
     // 2. Separate connection for hot-plug listening
     const listenConn = new PlistMuxConnection(
@@ -93,6 +109,8 @@ export class DevicePool extends EventEmitter {
   }
 
   async close(): Promise<void> {
+    this.bonjour?.stop();
+    this.bonjour = null;
     await this.listenConn?.close();
     this.listenConn = null;
   }

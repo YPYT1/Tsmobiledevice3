@@ -1,7 +1,10 @@
 import net from 'net';
 import tls from 'tls';
 import plist from 'plist';
-import { MuxException, NotPairedError, InvalidHostIDError } from '../exceptions';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const forge: any = require('node-forge');
+import { randomUUID } from 'crypto';
+import { MuxException, NotPairedError, InvalidHostIDError, PairingError } from '../exceptions';
 import { readExactly } from '../utils/socket';
 
 const LOCKDOWN_PORT = 62078;
@@ -158,6 +161,73 @@ export class LockdownClient {
     const r = this._verifyResponse('StartService',
       await this._sendRecv({ Label: DEFAULT_LABEL, Request: 'StartService', Service: name }));
     return { port: r.Port as number, enableSSL: !!r.EnableServiceSSL };
+  }
+
+  /**
+   * Perform the full lockdown pairing flow using a freshly generated RSA key + self-signed cert.
+   * Returns the pair record data (plist Buffer) ready for savePairRecord.
+   */
+  async pair(systemBuid: string): Promise<{ pairRecord: LockdownValue; pairRecordData: Buffer }> {
+    // 1. Get device certificate and Wi-Fi MAC from device
+    const deviceCertDer: Buffer = await this.getValue('DeviceCertificate');
+    const wifiMac: string = await this.getValue('WiFiAddress');
+
+    // 2. Generate RSA 2048 key pair + self-signed cert via node-forge
+    const keypair = forge.pki.rsa.generateKeyPair(2048);
+    const cert = forge.pki.createCertificate();
+    cert.publicKey = keypair.publicKey;
+    cert.serialNumber = '01';
+    cert.validity.notBefore = new Date();
+    cert.validity.notAfter = new Date();
+    cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 10);
+    cert.setSubject([{ name: 'commonName', value: 'ts-mobiledevice' }]);
+    cert.setIssuer([{ name: 'commonName', value: 'ts-mobiledevice' }]);
+    cert.sign(keypair.privateKey, forge.md.sha256.create());
+
+    const hostCertPem = forge.pki.certificateToPem(cert);
+    const hostKeyPem = forge.pki.privateKeyToPem(keypair.privateKey);
+    const hostId = randomUUID().toUpperCase();
+
+    const hostCertDer = Buffer.from(forge.util.decode64(
+      hostCertPem.replace(/-----[^-]+-----/g, '').replace(/\s/g, '')
+    ), 'binary');
+    const hostKeyDer = Buffer.from(forge.util.decode64(
+      hostKeyPem.replace(/-----[^-]+-----/g, '').replace(/\s/g, '')
+    ), 'binary');
+
+    const pairRecord: LockdownValue = {
+      DeviceCertificate: deviceCertDer,
+      HostCertificate: hostCertDer,
+      HostPrivateKey: hostKeyDer,
+      HostID: hostId,
+      SystemBUID: systemBuid,
+      WiFiMACAddress: wifiMac,
+    };
+
+    // 3. Send Pair request, poll on PairingDialogResponsePending (max 60s)
+    const deadline = Date.now() + 60_000;
+    let response: LockdownValue;
+    do {
+      response = await this._sendRecv({
+        Label: DEFAULT_LABEL,
+        Request: 'Pair',
+        PairRecord: pairRecord,
+        ProtocolVersion: '2',
+        PairingOptions: { ExtendedPairingErrors: true },
+      });
+      if (response.Error === 'PairingDialogResponsePending') {
+        if (Date.now() > deadline) throw new PairingError('Pairing dialog timed out after 60s');
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    } while (response.Error === 'PairingDialogResponsePending');
+
+    if (response.Error) throw new PairingError(`Pair failed: ${response.Error}`);
+
+    // 4. EscrowBag may be returned by device
+    if (response.EscrowBag) pairRecord.EscrowBag = response.EscrowBag;
+
+    const pairRecordData = Buffer.from(plist.build(pairRecord), 'utf8');
+    return { pairRecord, pairRecordData };
   }
 
   async close(): Promise<void> {

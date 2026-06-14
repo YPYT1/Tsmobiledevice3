@@ -34,3 +34,4 @@ export * from './AccessibilityAuditService';
 export * from './WdaService';
 export * from './dvt';
 export * from './web_protocol';
+export * from './RecoveryService';

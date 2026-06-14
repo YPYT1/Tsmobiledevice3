@@ -6,6 +6,7 @@ export * from './types';
 export * from './MuxDevice';
 export * from './UsbMuxConnection';
 export * from './PlistMuxConnection';
+export * from './BonjourDiscovery';
 
 /**
  * Convenience function: List all connected devices
